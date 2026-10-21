@@ -367,3 +367,20 @@ button.primary { background: linear-gradient(#6fb04f, #3d7a2b); color: #fff; bor
 }
 #palette .fmode { display: flex; align-items: center; gap: 4px; margin-bottom: 8px; font-size: 12.5px; flex-wrap: wrap; }
 #palette .fmode button { padding: 3px 9px; }
+/* the tool banner wraps into a short text line with a row of buttons below */
+#touch-hint { flex-wrap: wrap; row-gap: 6px; }
+#touch-hint .txt { flex: 1 1 240px; }
+#touch-hint .txt span { display: block; }
+@media (max-width: 720px) {
+  #touch-hint { padding: 6px 8px; gap: 6px; }
+  #touch-hint .txt { flex: 1 1 100%; }
+  #touch-hint .txt b { font-size: 13px; }
+  #touch-hint button { padding: 6px 10px; font-size: 14px; }
+  #touch-hint .build { flex: 1; }
+}
+@media (max-width: 720px) {
+  #messages { bottom: 128px; }
+}
+@media (max-width: 720px) {
+  body.tool-active #messages { display: none; }
+}

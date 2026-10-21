@@ -52,6 +52,7 @@ function limb(c, P, x, y0, len, ph, moving, front, col) {
       line(c, sx - w * 0.4, sy, sx + w * 0.4, sy - 0.3, '#1d1d1f', 0.9);
     }
   }
+  ell(c, fx + w * 0.2, fy + 0.2, w * 0.9, w * 0.3, 'rgba(0,0,0,0.25)');
   if (P.foot === 'hoof') {
     poly(c, [[fx - w * 0.45, fy - w * 0.5], [fx + w * 0.45, fy - w * 0.5], [fx + w * 0.6, fy], [fx - w * 0.5, fy]], '#2a2420');
   } else if (P.foot === 'pad') {
@@ -135,7 +136,12 @@ function drawHead(c, P, hx, hy, a, o) {
   const ex = H.skull * 0.25, ey = -H.skull * 0.22, er = Math.max(0.8, H.skull * 0.16);
   const blink = Math.sin(G.time * 1.3 + (o.id || 0) * 7) > 0.985;
   if (blink || o.state === 'rest' && o.sleep) line(c, ex - er, ey, ex + er, ey, '#16100c', 0.7);
-  else { circ(c, ex, ey, er, '#1a120c'); circ(c, ex + er * 0.35, ey - er * 0.35, er * 0.35, '#ffffff'); }
+  else {
+    if (P.eye) { circ(c, ex, ey, er * 1.15, P.eye); circ(c, ex + er * 0.1, ey, er * 0.55, '#120c08'); }
+    else circ(c, ex, ey, er, '#1a120c');
+    circ(c, ex + er * 0.35, ey - er * 0.35, er * 0.32, '#ffffff');
+    line(c, ex - er * 1.3, ey - er * 1.1, ex + er * 1.1, ey - er * 1.2, 'rgba(0,0,0,0.35)', 0.5);
+  }
   if (P.headExtra) P.headExtra(c, H, o);
   c.restore();
 }
@@ -152,6 +158,25 @@ function drawTail(c, P, base, o) {
   c.lineCap = 'round';
   c.stroke();
   if (T.tuft) ell(c, x2, y2 + 1, T.w * 0.9 + 0.6, 2.2, T.tuft, 0.3);
+}
+
+// Short hair strokes over the body, sloping back like real fur. Thick-skinned
+// animals get faint wrinkles instead.
+function hair(c, P, base, o) {
+  const L = P.L, D = P.D, top = base - D, seed = (o.id || 1) * 13;
+  if (P.skin) {
+    for (let k = 0; k < 26; k++) {
+      const x = -L + hash2(k, seed) * L * 2, y = top + hash2(k, seed + 1) * D;
+      curve(c, x, y, x + 1, y + 0.4, x + 2, y, 'rgba(0,0,0,0.12)', 0.5);
+    }
+    return;
+  }
+  const n = P.shaggy ? 70 : 45, len = P.shaggy ? 2.2 : 1.3;
+  for (let k = 0; k < n; k++) {
+    const x = -L * 1.05 + hash2(k, seed) * L * 2.1, y = top + 0.5 + hash2(k, seed + 1) * D;
+    const light = hash2(k, seed + 2) < 0.5;
+    line(c, x, y, x - len * 0.6, y + len, light ? 'rgba(255,245,220,0.12)' : 'rgba(40,25,10,0.12)', 0.5);
+  }
 }
 
 // ---------- coat patterns (clipped to the body or neck) ----------
@@ -257,10 +282,26 @@ function quadruped(c, P, o) {
   bodyPath(c, P, base);
   c.clip();
   coat(c, P, base, P.coat, o);
+  hair(c, P, base, o);
+  // light catching the top of the back (we are still clipped to the body)
+  c.beginPath();
+  c.rect(-P.L * 2, base - P.D - 12, P.L * 4, P.D * 0.5 + 12);
+  c.clip();
+  c.save();
+  c.translate(0, 1.4);
+  bodyPath(c, P, base);
+  c.restore();
+  c.strokeStyle = 'rgba(255,250,235,0.3)';
+  c.lineWidth = 1.4;
+  c.stroke();
   // haunch and shoulder muscle highlights
   ell(c, hindX + 1, base - P.D * 0.5, P.L * 0.34, P.D * 0.5, 'rgba(255,255,255,0.07)');
   ell(c, foreX - 1, base - P.D * 0.45, P.L * 0.26, P.D * 0.45, 'rgba(255,255,255,0.06)');
   c.restore();
+  bodyPath(c, P, base);
+  c.strokeStyle = 'rgba(25,18,10,0.45)';
+  c.lineWidth = 0.6;
+  c.stroke();
   if (P.bodyExtra) P.bodyExtra(c, base, o);
 
   // near legs
@@ -296,25 +337,32 @@ function quadruped(c, P, o) {
 // ---------- species ----------
 const lionMane = (c, g, o) => {
   if (o.sex !== 'M' || o.baby) return;
-  for (let k = 0; k < 16; k++) {
-    const a = (k / 16) * Math.PI * 2, r = 5.5 + hash2(k, 4) * 1.5;
-    circ(c, g.ex - 1 + Math.cos(a) * r * 0.8, g.ey + 1.2 + Math.sin(a) * r, 3.2 + hash2(k, 5) * 1.3, k % 3 ? '#7a4a1f' : '#5e3614');
+  // a ruff of hair strands around the head and down the neck, dark at the roots
+  const cx = g.ex - 1, cy = g.ey + 1.5;
+  for (let layer = 0; layer < 2; layer++) {
+    for (let k = 0; k < 34; k++) {
+      const a = (k / 34) * Math.PI * 2, r0 = 2.5, r1 = (layer ? 5.8 : 7.2) + hash2(k, 4 + layer) * 2.2;
+      const sway = Math.sin(G.time * 1.5 + k) * 0.25;
+      const x0 = cx + Math.cos(a) * r0, y0 = cy + Math.sin(a) * r0 * 1.2;
+      const x1 = cx + Math.cos(a + sway * 0.1) * r1 - 1.5, y1 = cy + Math.sin(a) * r1 * 1.25 + 1;
+      curve(c, x0, y0, (x0 + x1) / 2 + 0.8, (y0 + y1) / 2, x1, y1, layer ? '#9a6a30' : (k % 3 ? '#5e3614' : '#7a4a1f'), layer ? 1.6 : 2.4);
+    }
   }
 };
 
 const SPECIES_ART = {
   lion: {
-    L: 13, D: 9, leg: 9, legW: 3.3, belly: 1, neck: { len: 5, a: 30, w0: 9, w1: 7.5 }, head: { skull: 4.8, snout: 4.4, muzzleH: 3, a: 12 },
+    L: 13, D: 9, leg: 9, legW: 3.3, belly: 1, neck: { len: 5, a: 30, w0: 9, w1: 7.5 }, head: { skull: 4.3, snout: 4.1, muzzleH: 2.8, a: 12 }, eye: '#c08a2a',
     ears: 'round', nose: 'cat', foot: 'paw', coat: null, tail: { len: 15, w: 1.5, tuft: '#3a2410' },
     col: { body: '#c99a52', belly: 'rgba(240,215,165,0.75)', muzzle: '#e8d0a2', nose: '#4a2a1a' }, maneBack: lionMane,
   },
   tiger: {
-    L: 14, D: 9, leg: 9, legW: 3.6, belly: 1, neck: { len: 5, a: 28, w0: 9, w1: 7.5 }, head: { skull: 5, snout: 4.2, muzzleH: 3.1, a: 10 },
+    L: 14, D: 9, leg: 9, legW: 3.6, belly: 1, neck: { len: 5, a: 28, w0: 9, w1: 7.5 }, head: { skull: 4.6, snout: 4.1, muzzleH: 3, a: 10 }, eye: '#d0a030',
     ears: 'round', nose: 'cat', foot: 'paw', coat: 'tiger', tail: { len: 16, w: 1.7, tuft: '#1e140c' },
     col: { body: '#d9792a', belly: 'rgba(245,238,225,0.95)', muzzle: '#f4ece0', nose: '#c76b5a', earIn: '#2a1a10' },
   },
   cheetah: {
-    L: 13, D: 7, leg: 11.5, legW: 2.3, belly: -1, neck: { len: 6, a: 28, w0: 6, w1: 4.6 }, head: { skull: 3.6, snout: 3, muzzleH: 2.2, a: 10 },
+    L: 13, D: 7, leg: 11.5, legW: 2.3, belly: -1, neck: { len: 6, a: 28, w0: 6, w1: 4.6 }, head: { skull: 3.6, snout: 3, muzzleH: 2.2, a: 10 }, eye: '#b8862a',
     ears: 'small', nose: 'cat', foot: 'paw', coat: 'spots', tail: { len: 19, w: 1.3, tuft: '#f2ead8' },
     col: { body: '#dcb468', belly: 'rgba(245,236,214,0.9)', muzzle: '#efe2c4', nose: '#3a2418' },
     headExtra: (c, H) => line(c, H.skull * 0.3, -H.skull * 0.05, H.snout * 0.8, H.skull * 0.6, '#1e140c', 0.7),
@@ -332,13 +380,13 @@ const SPECIES_ART = {
     headExtra: (c, H) => { line(c, -H.skull * 0.1, -H.skull * 0.8, -H.skull * 0.3, -H.skull * 1.9, '#5a3a1a', 1); line(c, H.skull * 0.25, -H.skull * 0.8, H.skull * 0.15, -H.skull * 1.9, '#5a3a1a', 1); circ(c, -H.skull * 0.3, -H.skull * 1.95, 0.7, '#2a1a10'); circ(c, H.skull * 0.15, -H.skull * 1.95, 0.7, '#2a1a10'); },
   },
   camel: {
-    L: 12, D: 8, leg: 15, legW: 2.6, neck: { len: 13, a: 18, w0: 6, w1: 4 }, head: { skull: 3.3, snout: 6.5, muzzleH: 2.4, a: -15 },
-    ears: 'small', foot: 'pad', coat: 'fur', tail: { len: 11, w: 1.2, tuft: '#6a4a2a' }, grazeNeck: -30, grazeHead: 60,
+    shaggy: true, L: 12, D: 8, leg: 15, legW: 2.6, neck: { len: 13, a: 18, w0: 6, w1: 4 }, head: { skull: 3.3, snout: 6.5, muzzleH: 2.4, a: -15 },
+    ears: 'small', foot: 'pad', coat: null, tail: { len: 11, w: 1.2, tuft: '#6a4a2a' }, grazeNeck: -30, grazeHead: 60,
     col: { body: '#c9a06a', muzzle: '#b8905c' },
     bodyExtra: (c, base) => { c.beginPath(); c.ellipse(-1, base - 7.2, 6.2, 6, 0, Math.PI, 0); c.fillStyle = gradV(c, base - 14, base - 7, '#c9a06a'); c.fill(); },
   },
   elephant: {
-    L: 14, D: 13, leg: 11, legW: 6.5, withers: 2, slope: 1, neck: { len: 3, a: 15, w0: 14, w1: 13 }, head: { skull: 8, snout: 2, muzzleH: 5, a: 10 },
+    skin: true, L: 14, D: 13, leg: 11, legW: 6.5, withers: 2, slope: 1, neck: { len: 3, a: 15, w0: 14, w1: 13 }, head: { skull: 8, snout: 2, muzzleH: 5, a: 10 },
     ears: 'none', nose: 'none', foot: 'pad', coat: 'folds', neckCoat: false, tail: { len: 12, w: 1.3, tuft: '#3a3a3a' }, grazeNeck: 0, grazeHead: 25,
     col: { body: '#8f9097', muzzle: '#8f9097' },
     front: (c, g, headA, o) => {
@@ -361,7 +409,7 @@ const SPECIES_ART = {
     },
   },
   rhino: {
-    L: 14, D: 10, leg: 7, legW: 5, withers: 2, belly: 1, neck: { len: 3, a: 5, w0: 11, w1: 9.5 }, head: { skull: 5, snout: 8, muzzleH: 3.8, a: 25 },
+    skin: true, L: 14, D: 10, leg: 7, legW: 5, withers: 2, belly: 1, neck: { len: 3, a: 5, w0: 11, w1: 9.5 }, head: { skull: 5, snout: 8, muzzleH: 3.8, a: 25 },
     ears: 'tall', foot: 'pad', coat: 'folds', tail: { len: 8, w: 1, tuft: '#3a3530' }, grazeNeck: -15, grazeHead: 55, play: 'charge',
     col: { body: '#8f8a82', muzzle: '#8a857c' },
     headExtra: (c, H) => {
@@ -370,22 +418,22 @@ const SPECIES_ART = {
     },
   },
   hippo: {
-    L: 15, D: 10.5, leg: 5, legW: 5.5, belly: 2.5, neck: { len: 2, a: 0, w0: 12, w1: 11.5 }, head: { skull: 6.2, snout: 7.5, muzzleH: 5.2, a: 6 },
+    skin: true, L: 15, D: 10.5, leg: 5, legW: 5.5, belly: 2.5, neck: { len: 2, a: 0, w0: 12, w1: 11.5 }, head: { skull: 6.2, snout: 7.5, muzzleH: 5.2, a: 6 },
     ears: 'small', foot: 'pad', coat: null, tail: { len: 6, w: 1.4, tuft: '#5a4a50' }, play: 'yawn', grazeNeck: -10, grazeHead: 35,
     col: { body: '#857580', belly: 'rgba(205,160,165,0.85)', muzzle: '#9a8890', nose: '#6a5a62' },
   },
   grizzly: {
-    L: 13, D: 10, leg: 8, legW: 5, withers: 4, slope: 1, neck: { len: 4, a: 12, w0: 10, w1: 8.5 }, head: { skull: 5.3, snout: 4.4, muzzleH: 2.9, a: 15 },
-    ears: 'round', foot: 'paw', coat: 'fur', tail: { len: 3, w: 2 }, play: 'stand',
+    shaggy: true, L: 13, D: 10, leg: 8, legW: 5, withers: 4, slope: 1, neck: { len: 4, a: 12, w0: 10, w1: 8.5 }, head: { skull: 5.3, snout: 4.4, muzzleH: 2.9, a: 15 },
+    ears: 'round', foot: 'paw', coat: null, tail: { len: 3, w: 2 }, play: 'stand',
     col: { body: '#6e4628', muzzle: '#a07850', nose: '#1a120c' },
   },
   polarbear: {
-    L: 14, D: 10, leg: 8.5, legW: 5, withers: 2, slope: 1, neck: { len: 7, a: 15, w0: 9.5, w1: 7.5 }, head: { skull: 4.6, snout: 5, muzzleH: 2.7, a: 15 },
-    ears: 'small', foot: 'paw', coat: 'fur', tail: { len: 3, w: 2 }, play: 'stand',
+    shaggy: true, L: 14, D: 10, leg: 8.5, legW: 5, withers: 2, slope: 1, neck: { len: 7, a: 15, w0: 9.5, w1: 7.5 }, head: { skull: 4.6, snout: 5, muzzleH: 2.7, a: 15 },
+    ears: 'small', foot: 'paw', coat: null, tail: { len: 3, w: 2 }, play: 'stand',
     col: { body: '#efe9da', muzzle: '#e2dac6', nose: '#151515' },
   },
   panda: {
-    L: 12, D: 10, leg: 7.5, legW: 5, withers: 1, neck: { len: 3, a: 15, w0: 10, w1: 9 }, head: { skull: 5.6, snout: 3.6, muzzleH: 2.6, a: 12 },
+    shaggy: true, L: 12, D: 10, leg: 7.5, legW: 5, withers: 1, neck: { len: 3, a: 15, w0: 10, w1: 9 }, head: { skull: 5.6, snout: 3.6, muzzleH: 2.6, a: 12 },
     ears: 'round', foot: 'paw', coat: 'panda', tail: { len: 2, w: 2 }, play: 'stand', grazeNeck: 0, grazeHead: 30,
     col: { body: '#f4f2ec', leg: '#1d1d22', ear: '#1d1d22', earIn: '#1d1d22', muzzle: '#f4f2ec', nose: '#151515' },
     headExtra: (c, H) => { ell(c, H.skull * 0.25, -H.skull * 0.18, H.skull * 0.32, H.skull * 0.24, '#1d1d22', 0.5); circ(c, H.skull * 0.3, -H.skull * 0.22, H.skull * 0.11, '#ffffff'); },

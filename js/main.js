@@ -13,8 +13,106 @@ function isPaintTool() {
 }
 
 function vertexOf(f) { return { x: Math.round(f.x), y: Math.round(f.y) }; }
-function fenceLineMode() { return UI.tool.mode === 'fence' && UI.tool.fenceMode !== 'rect'; }
-// Finish a line-mode fence stroke: one piece for a tap, a straight run for a drag.
+// ---------- fence tool ----------
+// 'area' mode: paint the tiles of the exhibit, then build the fence around them.
+// 'pieces' mode: a mouse click places the nearest piece and a drag draws a straight
+// run; a tap selects a tile and shows big handles for each of its four sides.
+let fenceStroke = null;
+
+function fenceDown(e, t) {
+  fenceStroke = { sx: e.offsetX, sy: e.offsetY, f: screenToTile(e.offsetX, e.offsetY), t, moved: false, touch: e.pointerType !== 'mouse' };
+  if (UI.tool.fenceMode !== 'pieces' && inMap(t.x, t.y)) {
+    fenceStroke.adding = !UI.fenceArea.has(idx(t.x, t.y));
+    areaPaint(t);
+  }
+}
+
+function areaPaint(t) {
+  if (!inMap(t.x, t.y)) return;
+  const i = idx(t.x, t.y);
+  if (fenceStroke.adding) UI.fenceArea.add(i); else UI.fenceArea.delete(i);
+}
+
+function fenceMove(e, t) {
+  const st = fenceStroke;
+  if (!st.moved && Math.hypot(e.offsetX - st.sx, e.offsetY - st.sy) > 10) st.moved = true;
+  if (UI.tool.fenceMode !== 'pieces') { areaPaint(t); return; }
+  if (st.moved) UI.fenceDown = st.f;
+}
+
+function fenceUp(e) {
+  const st = fenceStroke;
+  fenceStroke = null;
+  if (!st || UI.tool.fenceMode !== 'pieces') return;
+  if (st.moved) { finishFenceLine(UI.hoverF || st.f); return; }
+  const h = fenceHandleAt(e.offsetX, e.offsetY);
+  if (h) { toggleFencePiece(h); return; }
+  if (st.touch) {
+    UI.pieceTile = inMap(st.t.x, st.t.y) ? st.t : null;
+    // keep all four side buttons on screen
+    if (UI.pieceTile) {
+      const p = tileToScreen(st.t.x + 0.5, st.t.y + 0.5), low = viewH - 190, high = 190;
+      if (p.y > low) cam.y += (p.y - low) / cam.zoom;
+      else if (p.y < high) cam.y -= (high - p.y) / cam.zoom;
+    }
+    return;
+  }
+  const edge = nearestEdge(st.f.x, st.f.y);
+  if (edge) toggleFencePiece(edge, true);
+}
+
+function toggleFencePiece([k, i], placeOnly = false) {
+  const F = k === 'h' ? G.hF : G.vF;
+  beginUndo();
+  if (F[i] && !placeOnly) { F[i] = 0; (k === 'h' ? G.hC : G.vC)[i] = 0; computeExhibits(); Sound.play('demolish'); }
+  else placeFenceSegs([[k, i]], UI.tool.key);
+  endUndo();
+  buzz();
+}
+
+// The four sides of the selected tile, as handles a finger can hit. Each sits
+// outside its edge at a fixed screen distance so they never overlap.
+function fenceHandles() {
+  const t = UI.pieceTile;
+  if (!t || UI.tool.mode !== 'fence' || UI.tool.fenceMode !== 'pieces') return [];
+  const { x, y } = t, c = tileToScreen(x + 0.5, y + 0.5);
+  return [
+    { seg: ['h', hIdx(x, y)], fx: x + 0.5, fy: y },
+    { seg: ['v', vIdx(x + 1, y)], fx: x + 1, fy: y + 0.5 },
+    { seg: ['h', hIdx(x, y + 1)], fx: x + 0.5, fy: y + 1 },
+    { seg: ['v', vIdx(x, y)], fx: x, fy: y + 0.5 },
+  ].map(h => {
+    const m = tileToScreen(h.fx, h.fy), dx = m.x - c.x, dy = m.y - c.y, d = Math.hypot(dx, dy) || 1;
+    return { ...h, mx: m.x, my: m.y, sx: m.x + dx / d * 30, sy: m.y + dy / d * 30, on: !!(h.seg[0] === 'h' ? G.hF : G.vF)[h.seg[1]] };
+  });
+}
+function fenceHandleAt(sx, sy) {
+  const hit = fenceHandles().find(h => Math.hypot(h.sx - sx, h.sy - sy) < 24);
+  return hit ? hit.seg : null;
+}
+
+// Edges between painted and unpainted tiles: the outline of the area.
+function areaSegs() {
+  const segs = [];
+  for (const i of UI.fenceArea) {
+    const x = i % MAP_W, y = (i / MAP_W) | 0;
+    const has = (nx, ny) => inMap(nx, ny) && UI.fenceArea.has(idx(nx, ny));
+    if (!has(x, y - 1)) segs.push(['h', hIdx(x, y)]);
+    if (!has(x + 1, y)) segs.push(['v', vIdx(x + 1, y)]);
+    if (!has(x, y + 1)) segs.push(['h', hIdx(x, y + 1)]);
+    if (!has(x - 1, y)) segs.push(['v', vIdx(x, y)]);
+  }
+  return segs;
+}
+function buildFenceArea() {
+  if (!UI.fenceArea.size) return;
+  beginUndo();
+  const ok = placeFenceSegs(areaSegs(), UI.tool.key);
+  endUndo();
+  if (ok) { UI.fenceArea.clear(); buzz(); }
+}
+
+// A straight run of fence: one piece for a tap, a line for a drag.
 function finishFenceLine(endF) {
   const down = UI.fenceDown;
   UI.fenceDown = null;
@@ -115,12 +213,13 @@ function setupInput() {
     canvas.setPointerCapture(e.pointerId);
     pointers.set(e.pointerId, { x: e.offsetX, y: e.offsetY });
     if (pointers.size === 2) {
-      if (painting || UI.dragStart) endUndo();
+      if (painting) endUndo();
       touch = null;
       UI.fenceDown = null;
+      fenceStroke = null;
       const [a, b] = [...pointers.values()];
       pinch = { d: Math.hypot(a.x - b.x, a.y - b.y), mx: (a.x + b.x) / 2, my: (a.y + b.y) / 2 };
-      pan = null; painting = false; UI.dragStart = null;
+      pan = null; painting = false;
       return;
     }
     const mode = UI.tool.mode;
@@ -130,16 +229,15 @@ function setupInput() {
     }
     const t = tileFromScreen(e.offsetX, e.offsetY);
     UI.hover = t;
+    UI.hoverF = screenToTile(e.offsetX, e.offsetY);
+    if (mode === 'fence') { fenceDown(e, t); return; }
     if (e.pointerType === 'touch') {
       // on touch, wait to see whether this is a tap or a drag
       touch = { sx: e.offsetX, sy: e.offsetY, start: t, moved: false };
       UI.hoverF = screenToTile(e.offsetX, e.offsetY);
-      if (fenceLineMode()) UI.fenceDown = UI.hoverF;
       return;
     }
-    if (fenceLineMode()) { UI.fenceDown = screenToTile(e.offsetX, e.offsetY); return; }
     beginUndo();
-    if (mode === 'fence') { UI.dragStart = t; return; }
     strokeStart = true;
     lastPaint = null;
     if (mode === 'animal') { applyAt(t.x, t.y); endUndo(); return; }
@@ -168,6 +266,7 @@ function setupInput() {
       if (pan.moved) { cam.x = pan.cx - dx / cam.zoom; cam.y = pan.cy - dy / cam.zoom; clampCamera(); UI.follow = null; }
       return;
     }
+    if (fenceStroke) { fenceMove(e, t); return; }
     if (touch && !touch.moved && Math.hypot(e.offsetX - touch.sx, e.offsetY - touch.sy) > 12) {
       touch.moved = true;
       const mode = UI.tool.mode;
@@ -177,10 +276,6 @@ function setupInput() {
         lastPaint = null;
         painting = true;
         paintTo(touch.start);
-      } else if (mode === 'fence' && !fenceLineMode()) {
-        beginUndo();
-        UI.fenceAnchor = null;
-        UI.dragStart = touch.start;
       }
     }
     if (painting && (!lastPaint || lastPaint.x !== t.x || lastPaint.y !== t.y)) paintTo(t);
@@ -188,20 +283,10 @@ function setupInput() {
   const end = e => {
     pointers.delete(e.pointerId);
     if (pinch) { if (pointers.size < 2) pinch = null; pan = null; return; }
+    if (fenceStroke) fenceUp(e);
     if (touch) {
       const t = touch.moved ? UI.hover : touch.start, mode = UI.tool.mode;
-      if (fenceLineMode()) {
-        finishFenceLine(touch.moved ? UI.hoverF : UI.fenceDown);
-      } else if (!touch.moved && mode === 'fence') {
-        // tap one corner, then the opposite corner
-        if (UI.fenceAnchor) {
-          beginUndo();
-          placeFenceRect(UI.fenceAnchor.x, UI.fenceAnchor.y, t.x, t.y, UI.tool.key);
-          endUndo();
-          UI.fenceAnchor = null;
-        } else UI.fenceAnchor = t;
-        buzz();
-      } else if (!touch.moved || (!painting && mode !== 'fence')) {
+      if (!touch.moved || (!painting && mode !== 'fence')) {
         // a tap, or a drag that was only positioning the preview
         beginUndo();
         strokeStart = true;
@@ -216,12 +301,6 @@ function setupInput() {
       // a right-click without dragging cancels the current tool
       if (!pan.moved && pan.button === 2 && UI.tool.mode !== 'select') UI.setCategory('select');
       pan = null;
-    }
-    if (UI.fenceDown) finishFenceLine(UI.hoverF || UI.fenceDown);
-    if (UI.dragStart && UI.hover) {
-      const a = UI.dragStart, b = UI.hover;
-      if (inMap(a.x, a.y) && inMap(b.x, b.y)) placeFenceRect(a.x, a.y, b.x, b.y, UI.tool.key);
-      UI.dragStart = null;
     }
     if (G.pendingUndo) endUndo();
     painting = false;
@@ -244,6 +323,7 @@ function setupInput() {
     const tk = toolKeys[e.key.toLowerCase()];
     if (tk) { UI.setCategory(UI.cat === tk && tk !== 'select' ? 'select' : tk); return; }
     switch (e.key) {
+      case 'Enter': if (UI.tool.mode === 'fence') buildFenceArea(); break;
       case 'Home': centerOn(ENTRANCE.x, ENTRANCE.y - 12); break;
       case 'm': case 'M': $('#minimap').classList.toggle('off'); break;
       case 'Delete': UI.setCategory('bulldoze'); break;

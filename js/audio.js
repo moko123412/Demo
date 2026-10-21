@@ -8,7 +8,17 @@ const ANIMAL_CALLS = {
   polarbear: 'growl', panda: 'bleat', kangaroo: 'cluck', camel: 'groan',
 };
 
+// Recorded clips (see sounds-data.js and CREDITS.md) used for each species when
+// available; the synthesized calls below are the fallback.
+const SPECIES_SAMPLES = {
+  lion: ['lion', 'lion2'], tiger: ['tiger'], elephant: ['elephant'], zebra: ['zebra'], giraffe: ['giraffe'],
+  penguin: ['penguin'], grizzly: ['grizzly', 'grizzly2'], polarbear: ['grizzly', 'grizzly2'], panda: ['panda'],
+  camel: ['camel'], flamingo: ['flamingo'], kangaroo: ['kangaroo'], cheetah: ['cheetah'], rhino: ['rhino'],
+};
+const SAMPLE_PITCH = { polarbear: 0.85 };
+
 const Sound = {
+  samples: {},
   ctx: null, out: null, sfxBus: null, musicBus: null, ambBus: null, noiseBuf: null, crowd: null,
   muted: false, musicOn: true, hold: 0, last: {}, birdT: 3, callT: 8,
   music: { next: 0, step: 0 },
@@ -64,6 +74,7 @@ const Sound = {
     send(this.musicBus, 0.25);
     this.applyVolumes();
     this.startAmbience();
+    this.loadSamples();
     this.music.next = ctx.currentTime + 0.6;
   },
 
@@ -82,6 +93,31 @@ const Sound = {
     const now = this.ctx.currentTime;
     if (this.last[name] !== undefined && now - this.last[name] < gap) return false;
     this.last[name] = now;
+    return true;
+  },
+
+  // ---------- recorded samples ----------
+  loadSamples() {
+    if (typeof SOUND_DATA === 'undefined') return;
+    for (const key in SOUND_DATA) {
+      const bin = atob(SOUND_DATA[key]), bytes = new Uint8Array(bin.length);
+      for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+      // older Safari only supports the callback form of decodeAudioData
+      try {
+        this.ctx.decodeAudioData(bytes.buffer, buf => { this.samples[key] = buf; }, () => { /* unsupported clip: keep the synth */ });
+      } catch (e) { /* ignore */ }
+    }
+  },
+
+  sample(key, dest, vol = 1, rate = 1, at = null) {
+    const buf = this.samples[key];
+    if (!buf) return false;
+    const src = this.ctx.createBufferSource(), g = this.ctx.createGain();
+    src.buffer = buf;
+    src.playbackRate.value = rate;
+    g.gain.value = vol;
+    src.connect(g).connect(dest || this.sfxBus);
+    src.start(at || this.ctx.currentTime);
     return true;
   },
 
@@ -321,6 +357,12 @@ const Sound = {
     if (!this.ok('a' + a.id, 6)) return;
     const d = this.spot(a.x, a.y, vol * (a.baby ? 0.6 : 1));
     if (!d) return;
+    const clips = (SPECIES_SAMPLES[a.sp] || []).filter(k => this.samples[k]);
+    if (clips.length) {
+      const rate = (SAMPLE_PITCH[a.sp] || 1) * rand(0.93, 1.06) * (a.baby ? 1.3 : 1);
+      this.sample(pick(clips), d, a.baby ? 0.6 : 0.9, rate);
+      return;
+    }
     const call = this.calls[ANIMAL_CALLS[a.sp]];
     if (call) call(this, this.ctx.currentTime + 0.01, d);
   },
@@ -458,6 +500,26 @@ const Sound = {
     this.voice(t, 0.7, 0.18, d, { f0: 520, peak: 900, peakAt: 0.4, f1: 600, attack: 0.05, formants: [[400, 5, 1], [2300, 8, 0.6]] });
   },
 
+  // Calls from a flock flying over, panned to where it is on screen.
+  flock(sx, big, close) {
+    if (!this.ctx || this.muted || this.ctx.state !== 'running') return;
+    let d = this.ambBus;
+    if (this.ctx.createStereoPanner) { const p = this.ctx.createStereoPanner(); p.pan.value = clamp(sx / viewW * 2 - 1, -1, 1) * 0.8; p.connect(this.ambBus); d = p; }
+    const t = this.ctx.currentTime;
+    if (big) {
+      const clips = ['crane', 'gull'].filter(k => this.samples[k]);
+      if (clips.length) this.sample(pick(clips), d, rand(0.25, 0.4), rand(0.95, 1.08));
+      else for (let k = 0; k < 3; k++) this.voice(t + k * rand(0.15, 0.3), 0.18, 0.08, d, { f0: rand(700, 850), f1: 600, rasp: 0.6, formants: [[1400, 5, 1], [2800, 6, 0.4]] });
+    } else {
+      // small birds twitter to each other as they fly
+      for (let k = 0; k < randi(3, 7); k++) {
+        const f = rand(3200, 5200), at = t + k * rand(0.05, 0.12);
+        this.osc('sine', f, at, 0.04, 0.03, d, { f1: f * rand(0.7, 1.3), attack: 0.004 });
+      }
+    }
+    if (close) this.noise(t, 0.35, 0.05, d, ['bandpass', 900, 0.8, 500], 0.1);
+  },
+
   cricket() {
     const t = this.ctx.currentTime;
     let d = this.ambBus;
@@ -477,6 +539,8 @@ const Sound = {
     const ctx = this.ctx, t = ctx.currentTime;
     let d = this.ambBus;
     if (ctx.createStereoPanner) { const pan = ctx.createStereoPanner(); pan.pan.value = rand(-0.85, 0.85); pan.connect(this.ambBus); d = pan; }
+    const songs = ['robin', 'blackbird', 'bunting'].filter(k => this.samples[k]);
+    if (songs.length && Math.random() < 0.5) { this.sample(pick(songs), d, rand(0.12, 0.25), rand(0.95, 1.05)); return; }
     const base = rand(2200, 4200), v = rand(0.018, 0.035);
     const note = (at, f0, f1, dur, vol, vib = 0) => this.osc('sine', f0, at, dur, vol, d, { f1, attack: Math.min(0.02, dur / 4), vib: vib ? [vib, f0 * 0.04] : null });
     switch (pick(['whistle', 'whistle', 'trill', 'warble', 'chirps', 'dove'])) {

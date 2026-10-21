@@ -13,7 +13,9 @@ Check your progress any time with the 🎯 button in the top bar. Scenarios are 
 
 ## How to play
 
-1. **Fences**: click or tap a tile edge to place one piece, or drag along the edges for a straight run. Switch to Rectangle mode to fence a whole area. A fully closed fence with no path inside becomes an exhibit.
+1. **Fences**: paint the tiles you want inside the exhibit (tap or drag), then press **Build fence** (or Enter) and the fence
+   goes up around them, in any shape. In **Single pieces** mode, tap a tile to get a round button on each side to add or
+   remove that side; with a mouse you can also click an edge or drag a straight line. A closed fence makes an exhibit.
 2. **Terrain, Plants and Exhibit items**: shape the habitat. Each species has favourite terrain, plants, rocks and shelters.
 3. **Animals**: pick a species and click inside an exhibit to adopt it.
 4. **Staff**: zookeepers feed animals, clean dung and treat sick animals. Maintenance workers sweep litter.
@@ -25,8 +27,8 @@ The zoo runs through day and night. Lamps and rides light up after dark, animals
 Fences wear out over time, and unhappy strong animals bash them, so hire maintenance workers to repair them.
 Zookeepers recapture escaped animals.
 
-On phones and tablets: tap a tile to build, drag one finger to paint paths, terrain or plants, drag a shop or animal
-to position it and lift to place, tap two corners for a fence, and use two fingers to move and zoom the map.
+On phones and tablets: tap a tile to build, drag one finger to paint paths, terrain, plants or a fence area, drag a shop
+or animal to position it and lift to place, and use two fingers to move and zoom the map.
 
 Happy animals with a mate become pregnant and give birth a few days later; the baby stays near its mother.
 
@@ -34,7 +36,8 @@ Click any animal, guest, staff member or exhibit to see what they're thinking. A
 suitability score for each species and what the animals still want, for example
 "Lions would like more Acacia Tree or Elephant Grass."
 
-Sound is generated in the browser (no audio files). Use 🔊 to mute and 🎵 to toggle the music.
+Animal and bird sounds use short public-domain and Creative Commons recordings (see [CREDITS.md](CREDITS.md)), with
+synthesized calls for species that have no recording. Use 🔊 to mute and 🎵 to toggle the music.
 
 Controls: drag, WASD or mouse-at-edge to scroll; wheel, pinch or ＋/－ to zoom; minimap to jump; right-click or Esc to cancel a tool;
 Ctrl+Z to undo a build. Tool keys: Q select, T terrain, P paths, F fences, N animals, L plants, E exhibit items, B food,

@@ -46,7 +46,7 @@
         <button data-brush="1">1</button><button data-brush="2" class="on">2</button><button data-brush="3">3</button><button data-brush="4">4</button>
       </div>
       <div class="fmode" hidden>Place
-        <button data-fmode="line" class="on">One piece / line</button><button data-fmode="rect">Rectangle</button>
+        <button data-fmode="area" class="on">🟩 Paint an area</button><button data-fmode="pieces">➖ Single pieces</button>
       </div>
       <div class="items"></div>
       <p class="desc"></p>
@@ -58,6 +58,8 @@
     <div id="cursor-tip" hidden></div>
     <div id="touch-hint" hidden>
       <div class="txt"></div>
+      <button class="clear" hidden>Clear</button>
+      <button class="build primary" hidden>✓ Build fence</button>
       <button class="undo" aria-label="Undo">↶</button>
       <button class="done primary">✓ Done</button>
     </div>
@@ -81,7 +83,7 @@
       <h1>🦁 Menagerie</h1>
       <p class="tag">Build the zoo you always dreamed of.</p>
       <ol>
-        <li><b>🚧 Fences</b>: tap or click tile edges to place fence pieces, or drag to draw straight runs (Rectangle mode fences a whole area). A closed fence makes an exhibit.</li>
+        <li><b>🚧 Fences</b>: paint the tiles you want inside the exhibit, then press <b>Build fence</b>. Switch to <b>Single pieces</b> to add or remove one side at a time.</li>
         <li><b>⛰️ Terrain</b> and <b>🌳 Plants</b>: shape the habitat. Each animal has favourites.</li>
         <li><b>🦁 Animals</b>: adopt animals and click inside the exhibit to release them.</li>
         <li><b>🧢 Staff</b>: hire zookeepers to feed animals and clean exhibits.</li>
@@ -123,6 +125,7 @@
   <script src="js/scenarios.js"></script>
   <script src="js/draw.js"></script>
   <script src="js/animals.js"></script>
+  <script src="js/sounds-data.js"></script>
   <script src="js/audio.js"></script>
   <script src="js/ui.js"></script>
   <script src="js/main.js"></script>

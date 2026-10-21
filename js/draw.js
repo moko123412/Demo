@@ -488,6 +488,13 @@ function drawSkyLife(c, now, dt) {
     fl.x += fl.vx * dt; fl.y += fl.vy * dt; fl.life += dt;
     if (fl.life > 40) { flocks.splice(f, 1); continue; }
     const dir = Math.sign(fl.vx);
+    // the flock calls now and then while it's on screen
+    fl.callT = (fl.callT == null ? rand(0.2, 1) : fl.callT) - dt;
+    if (fl.callT <= 0) {
+      fl.callT = fl.big ? rand(1.2, 2.6) : rand(0.6, 1.6);
+      const sx = (fl.x - cam.x) * cam.zoom + viewW / 2, sy = (fl.y - cam.y) * cam.zoom + viewH / 2;
+      if (sx > -40 && sx < viewW + 40 && sy > -40 && sy < viewH + 40) Sound.flock(sx, fl.big, cam.zoom > 1.2);
+    }
     for (const b of fl.birds) {
       const bx = fl.x + b.dx * dir, by = fl.y + b.dy, flap = Math.sin(t * (fl.big ? 7 : 11) + b.ph);
       // shadow on the ground far below
@@ -614,6 +621,26 @@ function renderMinimap(mc) {
   c.lineWidth = 1;
   c.strokeRect(x0, y0, viewW / cam.zoom * k, viewH / cam.zoom * k);
   return { k, oy };
+}
+
+// Big round buttons on each side of the selected tile (single-piece fence mode).
+function drawFenceHandles(c) {
+  for (const h of fenceHandles()) {
+    line(c, h.mx, h.my, h.sx, h.sy, 'rgba(255,255,255,0.85)', 2);
+    c.beginPath();
+    c.arc(h.sx, h.sy, 15, 0, Math.PI * 2);
+    c.fillStyle = h.on ? 'rgba(200,60,50,0.92)' : 'rgba(60,140,60,0.92)';
+    c.fill();
+    c.lineWidth = 2.5;
+    c.strokeStyle = '#fff';
+    c.stroke();
+    c.fillStyle = '#fff';
+    c.font = 'bold 18px system-ui, sans-serif';
+    c.textAlign = 'center';
+    c.textBaseline = 'middle';
+    c.fillText(h.on ? '×' : '+', h.sx, h.sy + 1);
+    c.textBaseline = 'alphabetic';
+  }
 }
 
 let vignette = null;
@@ -1294,6 +1321,7 @@ function render(now) {
   drawLighting();
   ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
   drawVignette(ctx);
+  drawFenceHandles(ctx);
   let bubbles = 0;
   const showGuestBubbles = cam.zoom >= 0.55;
   for (const list of [G.animals, G.staff, G.guests]) {
@@ -1408,13 +1436,7 @@ function drawToolPreview(c) {
       UI.tip = G.tiles[idx(h.x, h.y)].path ? '' : money(PATH_COST);
       break;
     case 'fence': {
-      if (tool.fenceMode !== 'rect' && UI.hoverF) {
-        let segs;
-        if (UI.fenceDown) {
-          const v0 = { x: Math.round(UI.fenceDown.x), y: Math.round(UI.fenceDown.y) }, v1 = { x: Math.round(UI.hoverF.x), y: Math.round(UI.hoverF.y) };
-          segs = v0.x === v1.x && v0.y === v1.y ? [nearestEdge(UI.fenceDown.x, UI.fenceDown.y)] : lineSegs(v0.x, v0.y, v1.x, v1.y);
-        } else segs = [nearestEdge(UI.hoverF.x, UI.hoverF.y)];
-        segs = segs.filter(Boolean);
+      const ghost = segs => {
         c.globalAlpha = 0.8;
         for (const [k, i] of segs) {
           const [ax, ay, bx, by] = segEnds(k, i);
@@ -1422,23 +1444,26 @@ function drawToolPreview(c) {
           drawFence(c, tool.key, isoX(ax, ay), isoY(ax, ay), isoX(bx, by), isoY(bx, by));
         }
         c.globalAlpha = 1;
-        UI.tip = `${money(segs.length * FENCES[tool.key].cost)} · ${segs.length} piece${segs.length === 1 ? '' : 's'}`;
+      };
+      if (tool.fenceMode !== 'pieces') {
+        for (const i of UI.fenceArea) outlineTile(c, i % MAP_W, (i / MAP_W) | 0, 'rgba(255,224,102,0.9)', 'rgba(255,224,102,0.35)');
+        outlineTile(c, h.x, h.y, '#ffffff', UI.fenceArea.size ? null : 'rgba(255,255,255,0.25)');
+        const segs = areaSegs();
+        ghost(segs);
+        UI.tip = segs.length ? `${money(segs.length * FENCES[tool.key].cost)} · press Build fence` : 'Paint the exhibit area';
         break;
       }
-      const a = UI.dragStart || UI.fenceAnchor || h;
-      const x0 = Math.min(a.x, h.x), x1 = Math.max(a.x, h.x), y0 = Math.min(a.y, h.y), y1 = Math.max(a.y, h.y);
-      c.globalAlpha = 0.75;
-      for (let x = x0; x <= x1; x++) {
-        drawFence(c, tool.key, isoX(x, y0), isoY(x, y0), isoX(x + 1, y0), isoY(x + 1, y0));
-        drawFence(c, tool.key, isoX(x, y1 + 1), isoY(x, y1 + 1), isoX(x + 1, y1 + 1), isoY(x + 1, y1 + 1));
+      if (UI.pieceTile) outlineTile(c, UI.pieceTile.x, UI.pieceTile.y, '#ffe066', 'rgba(255,224,102,0.3)');
+      if (UI.hoverF && !UI.pieceTile) {
+        let segs;
+        if (UI.fenceDown) {
+          const v0 = { x: Math.round(UI.fenceDown.x), y: Math.round(UI.fenceDown.y) }, v1 = { x: Math.round(UI.hoverF.x), y: Math.round(UI.hoverF.y) };
+          segs = v0.x === v1.x && v0.y === v1.y ? [nearestEdge(UI.fenceDown.x, UI.fenceDown.y)] : lineSegs(v0.x, v0.y, v1.x, v1.y);
+        } else segs = [nearestEdge(UI.hoverF.x, UI.hoverF.y)];
+        segs = segs.filter(Boolean);
+        ghost(segs);
+        UI.tip = `${money(segs.length * FENCES[tool.key].cost)} · ${segs.length} piece${segs.length === 1 ? '' : 's'}`;
       }
-      for (let y = y0; y <= y1; y++) {
-        drawFence(c, tool.key, isoX(x0, y), isoY(x0, y), isoX(x0, y + 1), isoY(x0, y + 1));
-        drawFence(c, tool.key, isoX(x1 + 1, y), isoY(x1 + 1, y), isoX(x1 + 1, y + 1), isoY(x1 + 1, y + 1));
-      }
-      c.globalAlpha = 1;
-      const n = 2 * (x1 - x0 + 1) + 2 * (y1 - y0 + 1);
-      UI.tip = `${money(n * FENCES[tool.key].cost)} · ${x1 - x0 + 1}×${y1 - y0 + 1}`;
       break;
     }
     case 'object': {

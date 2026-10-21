@@ -39,7 +39,7 @@ function paletteItems(cat) {
   switch (cat) {
     case 'terrain': return TERRAIN_ORDER.map(k => ({ kind: 'terrain', key: k, name: TERRAIN[k].name, cost: TERRAIN[k].cost, desc: 'Click and drag to paint. Each species has favourite terrain.' }));
     case 'path': return [{ kind: 'path', key: 'path', name: 'Paved Path', cost: PATH_COST, desc: 'Click and drag to lay path. Guests only walk on paths, so connect everything back to the entrance.' }];
-    case 'fence': return Object.keys(FENCES).map(k => ({ kind: 'fence', key: +k, name: FENCES[k].name, cost: FENCES[k].cost, desc: 'Click a tile edge to place one piece, or drag along the edges for a straight run. Switch to Rectangle to fence a whole area at once. A fully closed fence with no path inside becomes an exhibit.' }));
+    case 'fence': return Object.keys(FENCES).map(k => ({ kind: 'fence', key: +k, name: FENCES[k].name, cost: FENCES[k].cost, desc: 'Paint the tiles you want inside the exhibit, then press Build fence and it goes up around them. Use Single pieces to add or remove one side at a time. A closed fence with no path inside becomes an exhibit.' }));
     case 'animal': return Object.keys(SPECIES).filter(k => speciesAllowed(k)).map(k => ({ kind: 'animal', key: k, name: SPECIES[k].name, cost: SPECIES[k].cost, desc: speciesBlurb(k) }));
     case 'plants': return objs(o => o.cat === 'foliage');
     case 'exhibit': return objs(o => o.cat === 'rock' || o.cat === 'shelter' || o.cat === 'toy');
@@ -79,7 +79,8 @@ function objectBlurb(k) {
 }
 
 const UI = {
-  tool: { mode: 'select', key: null, brush: 2, fenceMode: 'line' },
+  tool: { mode: 'select', key: null, brush: 2, fenceMode: 'area' },
+  fenceArea: new Set(), pieceTile: null,
   cat: 'select', sel: null, hover: null, follow: null, tip: '', tipBad: false, dragStart: null, showGrid: false,
   messagesDirty: true, infoT: 0, topT: 0, lastInfo: '', previewCost: 0,
 
@@ -98,7 +99,8 @@ const UI = {
     $('#palette .close').addEventListener('click', () => this.setCategory('select'));
     document.querySelectorAll('[data-fmode]').forEach(b => b.addEventListener('click', () => {
       this.tool.fenceMode = b.dataset.fmode;
-      this.fenceAnchor = null;
+      this.fenceArea.clear();
+      this.pieceTile = null;
       document.querySelectorAll('[data-fmode]').forEach(x => x.classList.toggle('on', x === b));
     }));
     $('#info').addEventListener('click', e => this.onInfoClick(e));
@@ -116,6 +118,8 @@ const UI = {
     $('#btn-status').addEventListener('click', () => this.toggleStatus());
     $('#touch-hint .done').addEventListener('click', () => this.setCategory('select'));
     $('#touch-hint .undo').addEventListener('click', () => undo());
+    $('#touch-hint .build').addEventListener('click', () => buildFenceArea());
+    $('#touch-hint .clear').addEventListener('click', () => this.fenceArea.clear());
     $('#btn-more').addEventListener('click', () => $('#topbar').classList.toggle('open'));
     document.querySelectorAll('#topbar .menu button').forEach(b => b.addEventListener('click', () => $('#topbar').classList.remove('open')));
     const soundBtns = () => {
@@ -150,7 +154,8 @@ const UI = {
 
   setCategory(cat) {
     this.cat = cat;
-    this.fenceAnchor = null;
+    this.fenceArea.clear();
+    this.pieceTile = null;
     document.querySelectorAll('#toolbar .tool').forEach(b => b.classList.toggle('on', b.dataset.cat === cat));
     const pal = $('#palette');
     if (cat === 'select' || cat === 'bulldoze') {
@@ -195,15 +200,22 @@ const UI = {
   // Instructions for the active tool on touch screens and narrow windows.
   updateTouchHint() {
     const el = $('#touch-hint'), mode = this.tool.mode;
-    const show = mode !== 'select' && (matchMedia('(pointer: coarse)').matches || window.innerWidth < 720);
+    const show = mode !== 'select' && (mode === 'fence' || matchMedia('(pointer: coarse)').matches || window.innerWidth < 720);
     if (!show) { if (!el.hidden) el.hidden = true; return; }
     const name = mode === 'terrain' ? TERRAIN[this.tool.key].name : mode === 'path' ? 'Path' : mode === 'fence' ? FENCES[this.tool.key].name :
       mode === 'animal' ? SPECIES[this.tool.key].name : mode === 'bulldoze' ? 'Bulldozer' : OBJECTS[this.tool.key].name;
     const paint = mode === 'terrain' || mode === 'path' || mode === 'bulldoze' || (mode === 'object' && ['foliage', 'rock'].includes(OBJECTS[this.tool.key].cat));
-    const how = mode === 'fence' ? (this.tool.fenceMode !== 'rect' ? 'Tap a tile edge for one piece, or drag along the edges for a straight line' :
-      this.fenceAnchor ? 'Now tap the opposite corner' : 'Tap one corner, then the opposite corner') :
+    const area = mode === 'fence' && this.tool.fenceMode !== 'pieces', n = area ? this.fenceArea.size : 0;
+    const how = mode === 'fence' ? (area ? (n ? `${n} tile${n === 1 ? '' : 's'} painted · tap to add or remove` : 'Tap or drag over tiles to paint the exhibit') :
+      this.pieceTile ? 'Tap a round button to add or remove that side' : 'Tap a tile, then a side (mouse: click an edge)') :
       paint ? 'Tap tiles, or drag to paint' : 'Tap a tile, or drag to position then lift';
-    const html = `<b>${name}</b><span>${how} · two fingers move the map</span>`;
+    const html = `<b>${name}</b><span>${how}${matchMedia('(pointer: coarse)').matches ? ' · 2 fingers move the map' : ''}</span>`;
+    const build = el.querySelector('.build'), clear = el.querySelector('.clear');
+    build.hidden = clear.hidden = !(area && n);
+    if (area && n) {
+      const cost = money(areaSegs().length * FENCES[this.tool.key].cost);
+      if (build.textContent !== `✓ Build fence ${cost}`) build.textContent = `✓ Build fence ${cost}`;
+    }
     const body = el.querySelector('.txt');
     if (body.innerHTML !== html) body.innerHTML = html;
     el.hidden = false;
@@ -229,6 +241,7 @@ const UI = {
     if (this.infoT <= 0 && this.sel) { this.infoT = 0.4; this.refreshInfo(); }
     if (this.messagesDirty || Math.random() < 0.05) this.renderMessages();
     this.updateTouchHint();
+    document.body.classList.toggle('tool-active', this.tool.mode !== 'select');
     if (!$('#status').hidden && Math.random() < 0.05) this.renderStatus();
     if (!$('#goals').hidden && Math.random() < 0.05) this.renderGoals(false);
   },
