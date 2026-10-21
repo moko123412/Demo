@@ -39,7 +39,7 @@ function paletteItems(cat) {
   switch (cat) {
     case 'terrain': return TERRAIN_ORDER.map(k => ({ kind: 'terrain', key: k, name: TERRAIN[k].name, cost: TERRAIN[k].cost, desc: 'Click and drag to paint. Each species has favourite terrain.' }));
     case 'path': return [{ kind: 'path', key: 'path', name: 'Paved Path', cost: PATH_COST, desc: 'Click and drag to lay path. Guests only walk on paths, so connect everything back to the entrance.' }];
-    case 'fence': return Object.keys(FENCES).map(k => ({ kind: 'fence', key: +k, name: FENCES[k].name, cost: FENCES[k].cost, desc: 'Drag a rectangle to fence it in. A fully closed fence with no path inside becomes an exhibit.' }));
+    case 'fence': return Object.keys(FENCES).map(k => ({ kind: 'fence', key: +k, name: FENCES[k].name, cost: FENCES[k].cost, desc: 'Click a tile edge to place one piece, or drag along the edges for a straight run. Switch to Rectangle to fence a whole area at once. A fully closed fence with no path inside becomes an exhibit.' }));
     case 'animal': return Object.keys(SPECIES).filter(k => speciesAllowed(k)).map(k => ({ kind: 'animal', key: k, name: SPECIES[k].name, cost: SPECIES[k].cost, desc: speciesBlurb(k) }));
     case 'plants': return objs(o => o.cat === 'foliage');
     case 'exhibit': return objs(o => o.cat === 'rock' || o.cat === 'shelter' || o.cat === 'toy');
@@ -79,7 +79,7 @@ function objectBlurb(k) {
 }
 
 const UI = {
-  tool: { mode: 'select', key: null, brush: 2 },
+  tool: { mode: 'select', key: null, brush: 2, fenceMode: 'line' },
   cat: 'select', sel: null, hover: null, follow: null, tip: '', tipBad: false, dragStart: null, showGrid: false,
   messagesDirty: true, infoT: 0, topT: 0, lastInfo: '', previewCost: 0,
 
@@ -96,6 +96,11 @@ const UI = {
       bar.appendChild(b);
     }
     $('#palette .close').addEventListener('click', () => this.setCategory('select'));
+    document.querySelectorAll('[data-fmode]').forEach(b => b.addEventListener('click', () => {
+      this.tool.fenceMode = b.dataset.fmode;
+      this.fenceAnchor = null;
+      document.querySelectorAll('[data-fmode]').forEach(x => x.classList.toggle('on', x === b));
+    }));
     $('#info').addEventListener('click', e => this.onInfoClick(e));
     $('#messages').addEventListener('click', e => {
       const m = e.target.closest('[data-msg]');
@@ -176,6 +181,7 @@ const UI = {
       grid.appendChild(b);
     }
     $('#palette .brush').hidden = cat !== 'terrain';
+    $('#palette .fmode').hidden = cat !== 'fence';
     $('#palette .desc').textContent = items[0] ? items[0].desc : '';
     if (cat === 'staff') {
       this.tool = { ...this.tool, mode: 'select', key: null };
@@ -194,7 +200,8 @@ const UI = {
     const name = mode === 'terrain' ? TERRAIN[this.tool.key].name : mode === 'path' ? 'Path' : mode === 'fence' ? FENCES[this.tool.key].name :
       mode === 'animal' ? SPECIES[this.tool.key].name : mode === 'bulldoze' ? 'Bulldozer' : OBJECTS[this.tool.key].name;
     const paint = mode === 'terrain' || mode === 'path' || mode === 'bulldoze' || (mode === 'object' && ['foliage', 'rock'].includes(OBJECTS[this.tool.key].cat));
-    const how = mode === 'fence' ? (this.fenceAnchor ? 'Now tap the opposite corner' : 'Tap one corner, then the opposite corner') :
+    const how = mode === 'fence' ? (this.tool.fenceMode !== 'rect' ? 'Tap a tile edge for one piece, or drag along the edges for a straight line' :
+      this.fenceAnchor ? 'Now tap the opposite corner' : 'Tap one corner, then the opposite corner') :
       paint ? 'Tap tiles, or drag to paint' : 'Tap a tile, or drag to position then lift';
     const html = `<b>${name}</b><span>${how} · two fingers move the map</span>`;
     const body = el.querySelector('.txt');

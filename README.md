@@ -13,7 +13,7 @@ Check your progress any time with the 🎯 button in the top bar. Scenarios are 
 
 ## How to play
 
-1. **Fences**: drag a rectangle next to the path. A fully closed fence with no path inside becomes an exhibit.
+1. **Fences**: click or tap a tile edge to place one piece, or drag along the edges for a straight run. Switch to Rectangle mode to fence a whole area. A fully closed fence with no path inside becomes an exhibit.
 2. **Terrain, Plants and Exhibit items**: shape the habitat. Each species has favourite terrain, plants, rocks and shelters.
 3. **Animals**: pick a species and click inside an exhibit to adopt it.
 4. **Staff**: zookeepers feed animals, clean dung and treat sick animals. Maintenance workers sweep litter.
@@ -49,7 +49,8 @@ The game autosaves every three months, and the 💾/📂 buttons save and load b
 | `js/world.js` | Map state, fences, exhibit detection, suitability scoring, pathfinding, building, saving and loading |
 | `js/scenarios.js` | Scenario definitions, goal checks, unlocks and special starting maps |
 | `js/sim.js` | Animal, guest and staff behaviour, breeding, rating and monthly finances |
-| `js/draw.js` | Isometric camera, baked terrain layer and all procedurally drawn sprites |
+| `js/draw.js` | Isometric camera, baked terrain layer and procedurally drawn objects and people |
+| `js/animals.js` | Animal sprites: a shared anatomical quadruped configured per species, plus upright species |
 | `js/ui.js` | Top bar, build palette, info panels and dialogs |
 | `js/audio.js` | Synthesized sound: animal calls, building and UI sounds, ambience and music |
 | `js/main.js` | Input handling and the main loop |

@@ -12,6 +12,22 @@ function isPaintTool() {
   return m === 'terrain' || m === 'path' || m === 'bulldoze' || (m === 'object' && ['foliage', 'rock'].includes(OBJECTS[UI.tool.key].cat));
 }
 
+function vertexOf(f) { return { x: Math.round(f.x), y: Math.round(f.y) }; }
+function fenceLineMode() { return UI.tool.mode === 'fence' && UI.tool.fenceMode !== 'rect'; }
+// Finish a line-mode fence stroke: one piece for a tap, a straight run for a drag.
+function finishFenceLine(endF) {
+  const down = UI.fenceDown;
+  UI.fenceDown = null;
+  if (!down || !endF) return;
+  const a = vertexOf(down), b = vertexOf(endF);
+  beginUndo();
+  if (a.x === b.x && a.y === b.y) { const e = nearestEdge(down.x, down.y); if (e) placeFenceSegs([e], UI.tool.key); }
+  else placeFenceLine(a.x, a.y, b.x, b.y);
+  endUndo();
+  buzz();
+}
+function placeFenceLine(x0, y0, x1, y1) { return placeFenceSegs(lineSegs(x0, y0, x1, y1), UI.tool.key); }
+
 function tileFromScreen(sx, sy) {
   const t = screenToTile(sx, sy);
   return { x: Math.floor(t.x), y: Math.floor(t.y) };
@@ -53,7 +69,13 @@ function applyAt(x, y) {
   switch (tool.mode) {
     case 'terrain': for (const [bx, by] of brushTiles(x, y)) setTerrain(bx, by, tool.key); break;
     case 'path': placePath(x, y); break;
-    case 'bulldoze': bulldoze(x, y); break;
+    case 'bulldoze': {
+      // tapping right on an empty tile removes just the nearest fence piece
+      const f = UI.hoverF, onTile = f && Math.floor(f.x) === x && Math.floor(f.y) === y;
+      const t = G.tiles[idx(x, y)];
+      bulldoze(x, y, onTile && !t.obj && !t.path ? f.x : null, onTile ? f.y : null);
+      break;
+    }
     case 'object': {
       const err = placeObject(x, y, tool.key);
       if (err && strokeStart) notify(err, 'warn');
@@ -95,6 +117,7 @@ function setupInput() {
     if (pointers.size === 2) {
       if (painting || UI.dragStart) endUndo();
       touch = null;
+      UI.fenceDown = null;
       const [a, b] = [...pointers.values()];
       pinch = { d: Math.hypot(a.x - b.x, a.y - b.y), mx: (a.x + b.x) / 2, my: (a.y + b.y) / 2 };
       pan = null; painting = false; UI.dragStart = null;
@@ -110,8 +133,11 @@ function setupInput() {
     if (e.pointerType === 'touch') {
       // on touch, wait to see whether this is a tap or a drag
       touch = { sx: e.offsetX, sy: e.offsetY, start: t, moved: false };
+      UI.hoverF = screenToTile(e.offsetX, e.offsetY);
+      if (fenceLineMode()) UI.fenceDown = UI.hoverF;
       return;
     }
+    if (fenceLineMode()) { UI.fenceDown = screenToTile(e.offsetX, e.offsetY); return; }
     beginUndo();
     if (mode === 'fence') { UI.dragStart = t; return; }
     strokeStart = true;
@@ -135,6 +161,7 @@ function setupInput() {
     }
     const t = tileFromScreen(e.offsetX, e.offsetY);
     UI.hover = t;
+    UI.hoverF = screenToTile(e.offsetX, e.offsetY);
     if (pan) {
       const dx = e.offsetX - pan.sx, dy = e.offsetY - pan.sy;
       if (Math.abs(dx) + Math.abs(dy) > 5) pan.moved = true;
@@ -150,7 +177,7 @@ function setupInput() {
         lastPaint = null;
         painting = true;
         paintTo(touch.start);
-      } else if (mode === 'fence') {
+      } else if (mode === 'fence' && !fenceLineMode()) {
         beginUndo();
         UI.fenceAnchor = null;
         UI.dragStart = touch.start;
@@ -163,7 +190,9 @@ function setupInput() {
     if (pinch) { if (pointers.size < 2) pinch = null; pan = null; return; }
     if (touch) {
       const t = touch.moved ? UI.hover : touch.start, mode = UI.tool.mode;
-      if (!touch.moved && mode === 'fence') {
+      if (fenceLineMode()) {
+        finishFenceLine(touch.moved ? UI.hoverF : UI.fenceDown);
+      } else if (!touch.moved && mode === 'fence') {
         // tap one corner, then the opposite corner
         if (UI.fenceAnchor) {
           beginUndo();
@@ -188,6 +217,7 @@ function setupInput() {
       if (!pan.moved && pan.button === 2 && UI.tool.mode !== 'select') UI.setCategory('select');
       pan = null;
     }
+    if (UI.fenceDown) finishFenceLine(UI.hoverF || UI.fenceDown);
     if (UI.dragStart && UI.hover) {
       const a = UI.dragStart, b = UI.hover;
       if (inMap(a.x, a.y) && inMap(b.x, b.y)) placeFenceRect(a.x, a.y, b.x, b.y, UI.tool.key);

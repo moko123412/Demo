@@ -3,9 +3,9 @@
 // Everything is generated with the Web Audio API, so there are no sound files.
 
 const ANIMAL_CALLS = {
-  lion: 'roar', tiger: 'growl', cheetah: 'chirp', elephant: 'trumpet', giraffe: 'hum', zebra: 'bray',
-  gorilla: 'chest', grizzly: 'growl', penguin: 'squawk', rhino: 'snort', hippo: 'honk', flamingo: 'honkHigh',
-  polarbear: 'roar', panda: 'bleat', kangaroo: 'boing', camel: 'groan',
+  lion: 'roar', tiger: 'growl', cheetah: 'chirp', elephant: 'trumpet', giraffe: 'hum', zebra: 'bark',
+  gorilla: 'chest', grizzly: 'growl', penguin: 'penguin', rhino: 'snort', hippo: 'wheeze', flamingo: 'goose',
+  polarbear: 'growl', panda: 'bleat', kangaroo: 'cluck', camel: 'groan',
 };
 
 const Sound = {
@@ -133,27 +133,48 @@ const Sound = {
   },
 
   // A gain node panned to where (x, y) is on screen, or null when it is off screen.
+  // Distant sounds (zoomed out, or near the screen edge) are muffled like real distance.
   spot(x, y, base = 1, bus = this.sfxBus) {
     const p = tileToScreen(x, y);
     if (p.x < -80 || p.x > viewW + 80 || p.y < -80 || p.y > viewH + 80) return null;
-    const ctx = this.ctx, g = ctx.createGain();
-    g.gain.value = base * (0.35 + 0.65 * Math.min(1, cam.zoom));
+    const ctx = this.ctx, g = ctx.createGain(), lp = ctx.createBiquadFilter();
+    const far = Math.hypot(p.x - viewW / 2, p.y - viewH / 2) / Math.max(viewW, viewH);
+    g.gain.value = base * (0.35 + 0.65 * Math.min(1, cam.zoom)) * (1 - far * 0.5);
+    lp.type = 'lowpass';
+    lp.frequency.value = (1800 + 14000 * Math.min(1, cam.zoom / 1.2)) * (1 - far * 0.6);
+    g.connect(lp);
     if (ctx.createStereoPanner) {
       const pan = ctx.createStereoPanner();
-      pan.pan.value = clamp((p.x / viewW) * 2 - 1, -1, 1) * 0.6;
-      g.connect(pan).connect(bus);
-    } else g.connect(bus);
+      pan.pan.value = clamp((p.x / viewW) * 2 - 1, -1, 1) * 0.7;
+      lp.connect(pan).connect(bus);
+    } else lp.connect(bus);
     return g;
   },
 
-  // A buzzy source shaped by vocal-tract formants, with a rough tremolo:
-  // much closer to a real throat than a bare oscillator.
+  // Slowly wandering random signal (filtered noise), used for natural wobble.
+  wander(t, dur, rate, amount, target) {
+    const ctx = this.ctx, n = ctx.createBufferSource(), lp = ctx.createBiquadFilter(), g = ctx.createGain();
+    n.buffer = this.noiseBuf;
+    n.loop = true;
+    lp.type = 'lowpass';
+    lp.frequency.value = rate;
+    g.gain.value = amount;
+    n.connect(lp).connect(g).connect(target);
+    n.start(t, Math.random() * 1.5);
+    n.stop(t + dur + 0.05);
+  },
+
+  // A vocal sound: a buzzing source with natural pitch jitter and loudness
+  // shimmer, an optional raspy throat, breath noise, all shaped by formants.
   voice(t, dur, vol, dest, o) {
     const ctx = this.ctx, src = ctx.createOscillator(), amp = ctx.createGain(), out = ctx.createGain();
     src.type = 'sawtooth';
     src.frequency.setValueAtTime(o.f0, t);
     if (o.peak) src.frequency.linearRampToValueAtTime(o.peak, t + dur * (o.peakAt || 0.3));
     src.frequency.exponentialRampToValueAtTime(o.f1 || o.f0 * 0.7, t + dur);
+    this.wander(t, dur, 30, o.f0 * (o.jitter != null ? o.jitter : 0.04) * 8, src.frequency);
+    amp.gain.value = 0.6;
+    this.wander(t, dur, 45, o.shimmer != null ? o.shimmer : 1.2, amp.gain);
     if (o.rough) {
       const lfo = ctx.createOscillator(), lg = ctx.createGain();
       lfo.frequency.value = o.rough[0];
@@ -161,8 +182,27 @@ const Sound = {
       lfo.connect(lg).connect(amp.gain);
       lfo.start(t); lfo.stop(t + dur + 0.05);
     }
-    amp.gain.value = 0.6;
     src.connect(amp);
+    if (o.breath) {
+      const n = ctx.createBufferSource(), ng = ctx.createGain();
+      n.buffer = this.noiseBuf;
+      ng.gain.value = o.breath;
+      n.connect(ng).connect(amp);
+      n.start(t, Math.random() * 1.5, dur + 0.05);
+    }
+    let shaped = amp;
+    if (o.rasp) {
+      if (!this.raspCurve) {
+        const k = 4, curve = new Float32Array(1024);
+        for (let i = 0; i < 1024; i++) { const x = i / 512 - 1; curve[i] = Math.tanh(k * (x + 0.15)) - Math.tanh(k * 0.15); }
+        this.raspCurve = curve;
+      }
+      const ws = ctx.createWaveShaper(), pre = ctx.createGain();
+      ws.curve = this.raspCurve;
+      pre.gain.value = 1 + o.rasp * 3;
+      amp.connect(pre).connect(ws);
+      shaped = ws;
+    }
     for (const [f, q, g] of o.formants) {
       const bp = ctx.createBiquadFilter(), fg = ctx.createGain();
       bp.type = 'bandpass';
@@ -170,7 +210,7 @@ const Sound = {
       if (o.shift) bp.frequency.linearRampToValueAtTime(f * o.shift, t + dur);
       bp.Q.value = q;
       fg.gain.value = g;
-      amp.connect(bp).connect(fg).connect(out);
+      shaped.connect(bp).connect(fg).connect(out);
     }
     out.gain.setValueAtTime(0.0001, t);
     out.gain.exponentialRampToValueAtTime(vol, t + (o.attack || 0.06));
@@ -181,54 +221,104 @@ const Sound = {
     src.stop(t + dur + 0.05);
   },
 
-  // ---------- animal calls ----------
+  // ---------- animal calls, modelled on how each species really sounds ----------
   calls: {
-    roar(S, t, d, deep = 1) {
-      S.voice(t, 1.6, 0.9, d, { f0: 95 * deep, peak: 150 * deep, peakAt: 0.25, f1: 60 * deep, rough: [28, 0.5], attack: 0.15, formants: [[420 * deep, 4, 1.2], [900 * deep, 5, 0.6], [2200, 6, 0.2]], shift: 0.7 });
-      S.noise(t, 1.4, 0.18, d, ['bandpass', 700 * deep, 0.9, 300], 0.12);
-      S.osc('sine', 48 * deep, t, 1.4, 0.35, d, { f1: 38, attack: 0.2 });
+    // a full roar, then the trailing series of grunts lions make
+    roar(S, t, d) {
+      S.voice(t, 1.7, 0.85, d, { f0: 95, peak: 155, peakAt: 0.25, f1: 62, rasp: 0.6, breath: 0.35, jitter: 0.06, attack: 0.18, formants: [[380, 4, 1.2], [850, 5, 0.6], [2100, 6, 0.2]], shift: 0.75 });
+      S.osc('sine', 46, t, 1.5, 0.3, d, { f1: 36, attack: 0.25 });
+      let at = t + 2.0;
+      for (let k = 0; k < 6; k++) {
+        S.voice(at, 0.38, 0.65 * Math.pow(0.84, k), d, { f0: 92 - k * 3, f1: 70, rasp: 0.5, breath: 0.4, attack: 0.04, formants: [[340, 4, 1.2], [760, 5, 0.5]] });
+        at += 0.62 + k * 0.08;
+      }
     },
     growl(S, t, d) {
-      S.voice(t, 1.0, 0.8, d, { f0: 70, f1: 58, rough: [34, 0.6], attack: 0.1, formants: [[350, 4, 1.2], [800, 5, 0.5]] });
-      S.noise(t, 0.9, 0.12, d, ['lowpass', 500, 1], 0.1);
+      S.voice(t, 1.3, 0.8, d, { f0: 68, peak: 82, f1: 56, rough: [30, 0.5], rasp: 0.8, breath: 0.45, attack: 0.12, formants: [[320, 4, 1.3], [760, 5, 0.5], [1600, 6, 0.15]] });
+      S.voice(t + 1.45, 0.5, 0.45, d, { f0: 74, f1: 60, rasp: 0.6, breath: 0.6, attack: 0.05, formants: [[300, 4, 1.2], [700, 5, 0.5]] });
     },
-    chirp(S, t, d) { for (let k = 0; k < 3; k++) S.osc('sine', 1700, t + k * 0.16, 0.11, 0.14, d, { f1: 2500 }); },
+    // cheetahs famously chirp like birds
+    chirp(S, t, d) {
+      for (let k = 0; k < 4; k++) {
+        const at = t + k * rand(0.22, 0.32);
+        S.voice(at, 0.13, 0.35, d, { f0: 1750, peak: 2150, peakAt: 0.2, f1: 1450, breath: 0.15, jitter: 0.02, attack: 0.01, formants: [[2000, 3, 1], [3800, 5, 0.3]] });
+      }
+    },
+    // a low rumble, then the brassy, raspy trumpet
     trumpet(S, t, d) {
-      S.voice(t, 1.2, 0.55, d, { f0: 330, peak: 620, peakAt: 0.2, f1: 480, rough: [11, 0.3], attack: 0.04, formants: [[900, 3, 1], [1800, 4, 0.8], [3200, 5, 0.4]] });
-      S.noise(t, 1.0, 0.1, d, ['highpass', 2500, 1], 0.05);
-      S.osc('sawtooth', 165, t + 0.05, 1.0, 0.06, d, { f1: 240, glide: 0.25, filter: ['lowpass', 900, 1] });
+      S.osc('sine', 32, t, 0.9, 0.35, d, { f1: 28, attack: 0.2 });
+      S.voice(t + 0.25, 1.4, 0.6, d, { f0: 360, peak: 660, peakAt: 0.18, f1: 470, rasp: 1.2, breath: 0.4, jitter: 0.05, attack: 0.03, formants: [[850, 3, 1], [1700, 4, 0.8], [3100, 5, 0.45]] });
+      S.noise(t + 0.25, 1.2, 0.08, d, ['highpass', 2600, 1], 0.04);
     },
-    hum(S, t, d) { S.osc('sine', 72, t, 1.1, 0.28, d, { f1: 56, attack: 0.25 }); },
-    bray(S, t, d) {
-      for (let k = 0; k < 3; k++) {
-        S.voice(t + k * 0.42, 0.22, 0.4, d, { f0: 640, f1: 520, rough: [40, 0.4], attack: 0.02, formants: [[1100, 5, 1], [2400, 6, 0.5]] });
-        S.voice(t + k * 0.42 + 0.2, 0.22, 0.45, d, { f0: 260, f1: 210, rough: [30, 0.5], attack: 0.02, formants: [[600, 5, 1], [1300, 6, 0.4]] });
+    hum(S, t, d) {
+      S.voice(t, 1.4, 0.35, d, { f0: 62, f1: 55, jitter: 0.02, attack: 0.3, formants: [[180, 3, 1.3], [420, 4, 0.4]] });
+    },
+    // zebras bark: a squeaky in-breath, then a short honking "a-ha"
+    bark(S, t, d) {
+      let at = t;
+      for (let k = 0; k < 5; k++) {
+        S.voice(at, 0.09, 0.25, d, { f0: 950, f1: 1100, breath: 0.5, attack: 0.01, formants: [[1800, 5, 1], [3200, 6, 0.4]] });
+        S.voice(at + 0.1, 0.16, 0.55, d, { f0: 330, f1: 250, rasp: 0.7, breath: 0.25, attack: 0.01, formants: [[700, 4, 1], [1400, 5, 0.6], [2600, 6, 0.2]] });
+        at += 0.36 + k * 0.03;
       }
     },
+    // cupped hands on a big chest: hollow, resonant pok-pok-pok, speeding up
     chest(S, t, d) {
-      for (let k = 0; k < 6; k++) {
-        S.osc('sine', 100, t + k * 0.12, 0.13, 0.5, d, { f1: 55 });
-        S.noise(t + k * 0.12, 0.06, 0.12, d, ['lowpass', 400, 1]);
+      let at = t;
+      for (let k = 0; k < 9; k++) {
+        S.osc('sine', 210, at, 0.12, 0.45, d, { f1: 130 });
+        S.noise(at, 0.08, 0.35, d, ['bandpass', 240, 7]);
+        at += Math.max(0.07, 0.15 - k * 0.012);
+      }
+      S.voice(at + 0.1, 0.5, 0.35, d, { f0: 110, f1: 85, rasp: 0.6, breath: 0.5, formants: [[400, 4, 1], [900, 5, 0.4]] });
+    },
+    // emperor penguins sing with two voices at once, which beat against each other
+    penguin(S, t, d) {
+      for (let k = 0; k < 3; k++) {
+        const at = t + k * 0.65;
+        S.voice(at, 0.5, 0.3, d, { f0: 470, f1: 430, rough: [22, 0.5], jitter: 0.02, attack: 0.03, formants: [[1100, 5, 1], [2400, 6, 0.4]] });
+        S.voice(at, 0.5, 0.25, d, { f0: 505, f1: 455, jitter: 0.02, attack: 0.03, formants: [[1100, 5, 1], [2400, 6, 0.4]] });
       }
     },
-    squawk(S, t, d) {
-      for (let k = 0; k < 4; k++) S.voice(t + k * 0.14, 0.12, 0.35, d, { f0: 560 + (k % 2) * 90, f1: 420, rough: [55, 0.6], attack: 0.01, formants: [[1300, 5, 1], [2600, 6, 0.4]] });
+    // goose-like honks from a flock
+    goose(S, t, d) {
+      let at = t;
+      for (let k = 0; k < randi(3, 5); k++) {
+        const f = rand(380, 460);
+        S.voice(at, 0.17, 0.4, d, { f0: f, f1: f * 0.85, rasp: 0.9, breath: 0.2, attack: 0.015, formants: [[950, 6, 1], [2500, 7, 0.5]] });
+        at += rand(0.18, 0.4);
+      }
     },
-    honkHigh(S, t, d) { for (let k = 0; k < 2; k++) S.osc('sawtooth', 520, t + k * 0.22, 0.16, 0.1, d, { f1: 440, filter: ['bandpass', 1000, 2.5] }); },
     snort(S, t, d) {
-      S.noise(t, 0.3, 0.35, d, ['bandpass', 380, 1.4]);
-      S.noise(t + 0.38, 0.25, 0.25, d, ['bandpass', 320, 1.4]);
+      S.noise(t, 0.35, 0.4, d, ['bandpass', 340, 1.6], 0.02);
+      S.voice(t + 0.05, 0.3, 0.3, d, { f0: 85, f1: 70, rasp: 0.5, breath: 0.8, formants: [[300, 4, 1], [700, 5, 0.4]] });
+      S.noise(t + 0.55, 0.28, 0.3, d, ['bandpass', 300, 1.6], 0.02);
     },
-    honk(S, t, d) {
-      for (let k = 0; k < 4; k++) S.voice(t + k * 0.26, 0.28, 0.7, d, { f0: 120 - k * 10, f1: 85, rough: [22, 0.5], attack: 0.03, formants: [[380, 4, 1.2], [750, 5, 0.5]] });
+    // a rising wheeze, then a run of deep honks that slow down
+    wheeze(S, t, d) {
+      S.noise(t, 0.6, 0.18, d, ['bandpass', 600, 2, 1300], 0.2);
+      let at = t + 0.65;
+      for (let k = 0; k < 5; k++) {
+        S.voice(at, 0.26, 0.75 * Math.pow(0.88, k), d, { f0: 118 - k * 7, f1: 84, rasp: 0.9, breath: 0.3, attack: 0.02, formants: [[360, 4, 1.3], [720, 5, 0.5], [1500, 6, 0.15]] });
+        at += 0.27 + k * 0.05;
+      }
     },
-    bleat(S, t, d) { S.voice(t, 0.55, 0.35, d, { f0: 480, f1: 400, rough: [9, 0.5], attack: 0.04, formants: [[800, 5, 1], [1700, 6, 0.5]] }); },
-    boing(S, t, d) { S.osc('sine', 170, t, 0.3, 0.25, d, { f1: 640, glide: 0.22 }); },
-    groan(S, t, d) { S.voice(t, 1.1, 0.55, d, { f0: 140, peak: 170, f1: 95, rough: [18, 0.6], attack: 0.12, formants: [[500, 4, 1], [1100, 5, 0.5]], shift: 0.8 }); },
+    bleat(S, t, d) {
+      S.voice(t, 0.6, 0.35, d, { f0: 470, f1: 400, rough: [8, 0.6], jitter: 0.03, breath: 0.2, attack: 0.04, formants: [[800, 5, 1], [1700, 6, 0.5]] });
+    },
+    // soft clucks and coughs
+    cluck(S, t, d) {
+      for (let k = 0; k < 3; k++) S.noise(t + k * 0.16, 0.05, 0.3, d, ['bandpass', 1300, 3], 0.003);
+      S.voice(t + 0.55, 0.22, 0.3, d, { f0: 140, f1: 120, breath: 0.6, rasp: 0.4, formants: [[500, 4, 1], [1100, 5, 0.4]] });
+    },
+    // a gurgling groan
+    groan(S, t, d) {
+      S.voice(t, 1.3, 0.55, d, { f0: 130, peak: 165, f1: 92, rough: [14, 0.7], rasp: 0.8, breath: 0.4, attack: 0.12, formants: [[480, 4, 1], [1050, 5, 0.5]], shift: 0.8 });
+    },
   },
 
   animal(a, vol = 1) {
-    if (!this.ok('a' + a.id, 2.5)) return;
+    if (!this.ok('a' + a.id, 6)) return;
     const d = this.spot(a.x, a.y, vol * (a.baby ? 0.6 : 1));
     if (!d) return;
     const call = this.calls[ANIMAL_CALLS[a.sp]];
@@ -318,7 +408,18 @@ const Sound = {
   startAmbience() {
     this.wind = this.loopNoise('lowpass', 320, 0.5, this.ambBus);
     this.wind.gain.value = 0.045;
-    this.crowd = this.loopNoise('bandpass', 750, 0.7, this.ambBus);
+    // crowd murmur: three voice bands, each rising and falling at syllable rate
+    this.crowd = this.ctx.createGain();
+    this.crowd.gain.value = 0;
+    this.crowd.connect(this.ambBus);
+    for (const [f, q, rate] of [[320, 1.3, 3.7], [780, 1.6, 4.9], [1650, 2, 6.3]]) {
+      const band = this.loopNoise('bandpass', f, q, this.crowd), lfo = this.ctx.createOscillator(), lg = this.ctx.createGain();
+      band.gain.value = 0.55;
+      lfo.frequency.value = rate;
+      lg.gain.value = 0.45;
+      lfo.connect(lg).connect(band.gain);
+      lfo.start();
+    }
     this.water = this.loopNoise('bandpass', 420, 0.6, this.ambBus);
     this.chatT = 1; this.organT = 0; this.critterT = 2; this.organStep = 0;
   },
@@ -371,20 +472,46 @@ const Sound = {
     this.osc('sine', 360, t + 0.5, 0.6, 0.04, this.ambBus, { f1: 320, attack: 0.05 });
   },
 
+  // A short song from one of several bird types, somewhere off to the side.
   bird() {
-    const t = this.ctx.currentTime, base = rand(2300, 3900), n = randi(2, 5);
+    const ctx = this.ctx, t = ctx.currentTime;
     let d = this.ambBus;
-    if (this.ctx.createStereoPanner) {
-      const pan = this.ctx.createStereoPanner();
-      pan.pan.value = rand(-0.8, 0.8);
-      pan.connect(this.ambBus);
-      d = pan;
-    }
-    let at = t;
-    for (let k = 0; k < n; k++) {
-      const f = base * rand(0.9, 1.1);
-      this.osc('sine', f, at, 0.08, 0.025, d, { f1: f * rand(1.15, 1.5) });
-      at += rand(0.09, 0.15);
+    if (ctx.createStereoPanner) { const pan = ctx.createStereoPanner(); pan.pan.value = rand(-0.85, 0.85); pan.connect(this.ambBus); d = pan; }
+    const base = rand(2200, 4200), v = rand(0.018, 0.035);
+    const note = (at, f0, f1, dur, vol, vib = 0) => this.osc('sine', f0, at, dur, vol, d, { f1, attack: Math.min(0.02, dur / 4), vib: vib ? [vib, f0 * 0.04] : null });
+    switch (pick(['whistle', 'whistle', 'trill', 'warble', 'chirps', 'dove'])) {
+      case 'whistle': // "fee-bee" style two- or three-note whistle
+        note(t, base * 1.25, base * 1.22, 0.28, v);
+        note(t + 0.34, base, base * 0.97, 0.32, v);
+        if (Math.random() < 0.4) note(t + 0.72, base * 1.05, base * 1.02, 0.25, v * 0.8);
+        break;
+      case 'trill': {
+        const n = randi(9, 16);
+        for (let k = 0; k < n; k++) note(t + k * 0.065, base * (1.1 - k * 0.01), base * (0.85 - k * 0.01), 0.045, v * 0.9);
+        break;
+      }
+      case 'warble': { // a fast frequency-modulated warble
+        const o = ctx.createOscillator(), m = ctx.createOscillator(), mg = ctx.createGain(), g = ctx.createGain();
+        o.frequency.value = base;
+        m.frequency.value = rand(22, 38);
+        mg.gain.value = base * 0.15;
+        m.connect(mg).connect(o.frequency);
+        g.gain.setValueAtTime(0.0001, t);
+        g.gain.exponentialRampToValueAtTime(v, t + 0.05);
+        g.gain.setTargetAtTime(v * 0.5, t + 0.3, 0.2);
+        g.gain.exponentialRampToValueAtTime(0.0001, t + 0.9);
+        o.connect(g).connect(d);
+        o.start(t); m.start(t); o.stop(t + 0.95); m.stop(t + 0.95);
+        break;
+      }
+      case 'chirps':
+        for (let k = 0; k < randi(3, 5); k++) note(t + k * rand(0.1, 0.16), base * 1.5, base * 0.8, 0.05, v);
+        break;
+      case 'dove': // distant cooing
+        note(t, 520, 490, 0.35, v * 0.9, 6);
+        note(t + 0.45, 560, 470, 0.6, v, 6);
+        note(t + 1.15, 500, 480, 0.4, v * 0.8, 6);
+        break;
     }
   },
 
@@ -403,7 +530,16 @@ const Sound = {
     let wet = 0;
     const c0 = screenToTile(viewW / 2, viewH / 2), cx = Math.floor(c0.x), cy = Math.floor(c0.y);
     for (let y = cy - 8; y <= cy + 8; y += 2) for (let x = cx - 8; x <= cx + 8; x += 2) { const tl = tileAt(x, y); if (tl && tl.t === 'water') wet++; }
-    this.water.gain.setTargetAtTime(Math.min(0.06, wet * 0.004) * (0.5 + 0.5 * Math.sin(t * 0.7)), t, 0.4);
+    this.water.gain.setTargetAtTime(Math.min(0.05, wet * 0.003) * (0.5 + 0.5 * Math.sin(t * 0.7)), t, 0.4);
+    // little bubbles and trickles when water is close
+    if (wet && !this.muted && Math.random() < Math.min(0.5, wet * 0.02) * dt * 8) {
+      let d = this.ambBus;
+      if (this.ctx.createStereoPanner) { const p = this.ctx.createStereoPanner(); p.pan.value = rand(-0.6, 0.6); p.connect(this.ambBus); d = p; }
+      const f = rand(450, 1300);
+      this.osc('sine', f, t, rand(0.03, 0.07), 0.025 * Math.min(1, cam.zoom), d, { f1: f * rand(1.4, 2), attack: 0.004 });
+    }
+    // the wind gusts now and then, and drops at night
+    this.wind.gain.setTargetAtTime((0.025 + 0.035 * Math.max(0, Math.sin(t * 0.13) * Math.sin(t * 0.37 + 1))) * (1 - dark * 0.5), t, 1.2);
     this.birdT -= dt;
     if (this.birdT <= 0) {
       this.birdT = dark > 0.5 ? rand(0.6, 1.6) : rand(2, 7);

@@ -296,20 +296,14 @@ function placePath(x, y) {
   return true;
 }
 
-function placeFenceRect(x0, y0, x1, y1, type) {
-  if (x0 > x1) [x0, x1] = [x1, x0];
-  if (y0 > y1) [y0, y1] = [y1, y0];
-  const segs = [];
-  const bothPath = (ax, ay, bx, by) => { const a = tileAt(ax, ay), b = tileAt(bx, by); return a && b && a.path && b.path; };
-  for (let x = x0; x <= x1; x++) {
-    if (!bothPath(x, y0 - 1, x, y0)) segs.push(['h', hIdx(x, y0)]);
-    if (!bothPath(x, y1, x, y1 + 1)) segs.push(['h', hIdx(x, y1 + 1)]);
-  }
-  for (let y = y0; y <= y1; y++) {
-    if (!bothPath(x0 - 1, y, x0, y)) segs.push(['v', vIdx(x0, y)]);
-    if (!bothPath(x1, y, x1 + 1, y)) segs.push(['v', vIdx(x1 + 1, y)]);
-  }
-  const todo = segs.filter(([k, i]) => (k === 'h' ? G.hF : G.vF)[i] !== type);
+// Fence segments are ['h', hIdx] or ['v', vIdx] tile edges.
+function fenceBlocksPath(k, i) {
+  const [[ax, ay], [bx, by]] = fenceSides(k, i), a = tileAt(ax, ay), b = tileAt(bx, by);
+  return a && b && a.path && b.path;
+}
+
+function placeFenceSegs(segs, type) {
+  const todo = segs.filter(([k, i]) => !fenceBlocksPath(k, i) && (k === 'h' ? G.hF : G.vF)[i] !== type);
   if (!todo.length) return false;
   if (!spend(todo.length * FENCES[type].cost)) return false;
   for (const [k, i] of todo) { (k === 'h' ? G.hF : G.vF)[i] = type; (k === 'h' ? G.hC : G.vC)[i] = 100; }
@@ -317,6 +311,55 @@ function placeFenceRect(x0, y0, x1, y1, type) {
   const before = G.exhibits.length;
   computeExhibits();
   if (G.exhibits.length > before) notify('New exhibit built! Add terrain, plants and animals.', 'good');
+  return true;
+}
+
+function rectSegs(x0, y0, x1, y1) {
+  if (x0 > x1) [x0, x1] = [x1, x0];
+  if (y0 > y1) [y0, y1] = [y1, y0];
+  const segs = [];
+  for (let x = x0; x <= x1; x++) segs.push(['h', hIdx(x, y0)], ['h', hIdx(x, y1 + 1)]);
+  for (let y = y0; y <= y1; y++) segs.push(['v', vIdx(x0, y)], ['v', vIdx(x1 + 1, y)]);
+  return segs;
+}
+function placeFenceRect(x0, y0, x1, y1, type) { return placeFenceSegs(rectSegs(x0, y0, x1, y1), type); }
+
+// A straight run of fence between two grid corners, along whichever axis the drag mostly follows.
+function lineSegs(x0, y0, x1, y1) {
+  const segs = [];
+  if (Math.abs(x1 - x0) >= Math.abs(y1 - y0)) {
+    if (y0 < 0 || y0 > MAP_H) return segs;
+    for (let x = Math.max(0, Math.min(x0, x1)); x < Math.min(MAP_W, Math.max(x0, x1)); x++) segs.push(['h', hIdx(x, y0)]);
+  } else {
+    if (x0 < 0 || x0 > MAP_W) return segs;
+    for (let y = Math.max(0, Math.min(y0, y1)); y < Math.min(MAP_H, Math.max(y0, y1)); y++) segs.push(['v', vIdx(x0, y)]);
+  }
+  return segs;
+}
+
+// The tile edge closest to a point given in fractional tile coordinates.
+function nearestEdge(fx, fy) {
+  const tx = Math.floor(fx), ty = Math.floor(fy);
+  if (!inMap(tx, ty)) return null;
+  const u = fx - tx, v = fy - ty, d = [v, 1 - u, 1 - v, u];
+  const k = d.indexOf(Math.min(...d));
+  return [['h', hIdx(tx, ty)], ['v', vIdx(tx + 1, ty)], ['h', hIdx(tx, ty + 1)], ['v', vIdx(tx, ty)]][k];
+}
+
+function segEnds(k, i) {
+  if (k === 'h') { const x = i % MAP_W, y = (i / MAP_W) | 0; return [x, y, x + 1, y]; }
+  const x = i % (MAP_W + 1), y = (i / (MAP_W + 1)) | 0;
+  return [x, y, x, y + 1];
+}
+
+function removeFenceAt(fx, fy) {
+  const e = nearestEdge(fx, fy);
+  if (!e) return false;
+  const [k, i] = e, F = k === 'h' ? G.hF : G.vF, C = k === 'h' ? G.hC : G.vC;
+  if (!F[i]) return false;
+  F[i] = 0; C[i] = 0;
+  computeExhibits();
+  Sound.play('demolish');
   return true;
 }
 
@@ -370,7 +413,7 @@ function createAnimal(sp, x, y, baby = false) {
   };
 }
 
-function bulldoze(x, y) {
+function bulldoze(x, y, fx = null, fy = null) {
   const t = tileAt(x, y);
   if (!t) return false;
   if (t.obj || t.path) Sound.play('demolish');
@@ -389,6 +432,7 @@ function bulldoze(x, y) {
     computeExhibits();
     return true;
   }
+  if (fx != null) return removeFenceAt(fx, fy);
   let removed = false;
   for (const i of [hIdx(x, y), hIdx(x, y + 1)]) if (G.hF[i]) { G.hF[i] = 0; G.hC[i] = 0; removed = true; }
   for (const i of [vIdx(x, y), vIdx(x + 1, y)]) if (G.vF[i]) { G.vF[i] = 0; G.vC[i] = 0; removed = true; }

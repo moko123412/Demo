@@ -69,7 +69,7 @@ function hslHex(h, s, l) {
 }
 
 function ell(c, x, y, rx, ry, fill, rot = 0) {
-  if (SHADE && fill.charCodeAt(0) === 35 && rx > 0.8) {
+  if (SHADE && typeof fill === 'string' && fill.charCodeAt(0) === 35 && rx > 0.8) {
     c.save();
     c.translate(x, y);
     if (rot) c.rotate(rot);
@@ -1113,344 +1113,7 @@ function drawEntrance(c) {
   c.restore();
 }
 
-// ---------- animals ----------
-// Jointed legs with a trotting gait: diagonal pairs move together, the foot
-// lifts on the forward swing, knees bend, and the far legs are a shade darker.
-const GAIT = [0, Math.PI, Math.PI, 0];
-function legs(c, xs, y0, len, color, t, moving, w) {
-  const n = xs.length;
-  xs.forEach((x, i) => {
-    const front = i >= n / 2, ph = t + (n === 4 ? GAIT[i] : (i % 2) * Math.PI);
-    const swing = moving ? Math.sin(ph) : 0, lift = moving ? Math.max(0, Math.cos(ph)) : 0;
-    const col = i % 2 === 0 ? tint(color, -0.18) : color;
-    const hipX = x, kneeX = x + swing * len * 0.12 + (front ? -1 : 1) * (0.6 + lift * len * 0.14);
-    const kneeY = y0 + len * 0.52 - lift * len * 0.08;
-    const footX = x + swing * len * 0.32, footY = y0 + len - lift * len * 0.22;
-    line(c, hipX, y0, kneeX, kneeY, col, w);
-    line(c, kneeX, kneeY, footX, footY, col, w * 0.78);
-    line(c, footX - 0.6, footY, footX + 1.2, footY, tint(color, -0.45), w * 0.7);
-  });
-}
-
-function catShape(c, o, col) {
-  const { anim: t, moving, state } = o;
-  if (state === 'rest') {
-    ell(c, 0, -5, 14, 5, col.body);
-    curve(c, -13, -4, -20, -2, -22, -6, col.dark, 2);
-    if (col.mane && o.sex === 'M') circ(c, 11, -9, 7, col.mane);
-    circ(c, 13, -9, 5, col.body);
-    ell(c, 17, -7, 3, 2.5, col.muzzle);
-    line(c, 13, -10, 15, -10, '#222', 1);
-    return;
-  }
-  const pounce = state === 'play' && o.play === 'pounce';
-  const roar = state === 'play' && o.play === 'roar';
-  if (pounce) c.rotate(-0.25 * Math.abs(Math.sin(t)));
-  legs(c, [-9, -5, 6, 10], -8, 9, col.dark, t, moving, 3);
-  curve(c, -13, -12, -22, -8, -21, -18 + Math.sin(t * 0.7) * 2, col.dark, 2);
-  if (col.mane) circ(c, -21, -18 + Math.sin(t * 0.7) * 2, 2, col.mane);
-  ell(c, 0, -12, 14, 6, col.body);
-  ell(c, 1, -9, 10, 3, col.belly);
-  if (col.spots) {
-    for (let k = 0; k < 14; k++) circ(c, -11 + hash2(k, 5) * 22, -16 + hash2(k, 6) * 7, 0.9, '#3a2a14');
-  }
-  if (col.stripes) {
-    c.save();
-    c.beginPath(); c.ellipse(0, -12, 14, 6, 0, 0, Math.PI * 2); c.clip();
-    for (let x = -10; x <= 10; x += 4) curve(c, x, -18, x + 2, -12, x - 1, -7, '#2b1a0f', 1.6);
-    c.restore();
-  }
-  c.save();
-  if (roar) { c.translate(13, -15); c.rotate(-0.35); c.translate(-13, 15); }
-  if (col.mane && o.sex === 'M') circ(c, 11, -16, 8, col.mane);
-  circ(c, 13, -15, 5.2, col.body);
-  circ(c, 11, -20, 2, col.body);
-  ell(c, 17, -13, 3.2, 2.6, col.muzzle);
-  circ(c, 19.5, -14, 1, '#2b1a0f');
-  circ(c, 14.5, -17, 1, '#111');
-  if (roar) ell(c, 18, -11, 2.5, 2, '#5a1010');
-  if (col.spots) line(c, 15, -15, 16, -12, '#3a2a14', 0.8);
-  c.restore();
-}
-
-function bearShape(c, o, col) {
-  const { anim: t, moving, state } = o;
-  const patch = (x, y) => { if (col.panda) ell(c, x, y, 1.8, 1.4, col.dark, 0.4); };
-  if (state === 'play') {
-    ell(c, 0, -18, 8, 12, col.body);
-    if (col.panda) ell(c, 0, -24, 8, 3.5, col.dark);
-    line(c, -6, -22, -12, -27, col.dark, 4); line(c, 6, -22, 12, -27, col.dark, 4);
-    line(c, -3, -7, -4, 0, col.dark, 4); line(c, 3, -7, 4, 0, col.dark, 4);
-    circ(c, 0, -32, 5.5, col.body);
-    circ(c, -4, -36, 2, col.panda ? col.dark : col.body); circ(c, 4, -36, 2, col.panda ? col.dark : col.body);
-    patch(-2, -33); patch(2, -33);
-    ell(c, 1, -30, 2.5, 2, col.muzzle);
-    circ(c, 1, -31, 0.9, '#111');
-    return;
-  }
-  if (state === 'rest') {
-    ell(c, 0, -6, 13, 6, col.body);
-    if (col.panda) ell(c, 2, -8, 4, 5, col.dark);
-    circ(c, 12, -7, 5, col.body);
-    if (col.panda) { circ(c, 10, -11.5, 1.8, col.dark); patch(13, -8); }
-    ell(c, 15, -6, 2.5, 2, col.muzzle);
-    return;
-  }
-  legs(c, [-9, -5, 5, 9], -9, 9, col.dark, t, moving, 4.2);
-  ell(c, 0, -12, 13, 7.5, col.body);
-  if (col.panda) ell(c, 4, -12, 4, 7.5, col.dark);
-  else ell(c, -2, -17, 7, 4, col.hump);
-  circ(c, 12, -14, 5.5, col.body);
-  circ(c, 10, -19, 2, col.panda ? col.dark : col.body); circ(c, 14, -19, 2, col.panda ? col.dark : col.body);
-  ell(c, 16.5, -12.5, 3, 2.5, col.muzzle);
-  patch(14, -15.5);
-  circ(c, 18.5, -13, 1, '#111');
-  circ(c, 13.8, -15.5, 0.9, col.panda ? '#fff' : '#111');
-}
-
-const ANIMAL_SHAPES = {
-  lion(c, o) { catShape(c, o, { body: '#c99a4b', belly: '#dbb672', dark: '#b4863e', muzzle: '#e6c993', mane: '#7a4a1f' }); },
-  tiger(c, o) { catShape(c, o, { body: '#e0862a', belly: '#f6efe2', dark: '#c46f1d', muzzle: '#f6efe2', stripes: true }); },
-  elephant(c, o) {
-    const { anim: t, moving, state } = o;
-    const play = state === 'play';
-    if (state === 'rest') {
-      ell(c, 0, -9, 15, 8, '#8e9097');
-      circ(c, 13, -11, 6, '#8e9097');
-      ell(c, 10, -11, 4.5, 6.5, '#7a7c83');
-      curve(c, 17, -9, 20, -3, 23, -2, '#8e9097', 3.5);
-      return;
-    }
-    legs(c, [-9, -4, 5, 10], -10, 10, '#7d7f86', t, moving, 5.0);
-    curve(c, -14, -18, -17, -12, -16, -7, '#7d7f86', 1.5);
-    ell(c, 0, -17, 14, 9, '#8e9097');
-    if (play) c.rotate(-0.12);
-    circ(c, 13, -19, 6.5, '#8e9097');
-    ell(c, 9.5, -18, 5, 7.5, '#7a7c83', 0.15);
-    if (play) curve(c, 18, -18, 25, -24, 23, -33, '#8e9097', 3.5);
-    else curve(c, 18, -16, 22, -9, 20 + Math.sin(t * 0.5), -2, '#8e9097', 3.5);
-    line(c, 16, -14, 20, -13, '#f4f1e6', 1.5);
-    circ(c, 15, -21, 1, '#111');
-  },
-  giraffe(c, o) {
-    const { anim: t, moving, state } = o;
-    if (state === 'rest') {
-      ell(c, 0, -7, 11, 5, '#e0a64e');
-      line(c, 7, -9, 12, -26, '#e0a64e', 4.5);
-      ell(c, 14, -27, 5, 2.6, '#e0a64e');
-      ell(c, -3, -7, 2, 1.5, '#8a5124'); ell(c, 3, -8, 2, 1.5, '#8a5124');
-      return;
-    }
-    legs(c, [-7, -4, 5, 8], -15, 15, '#d39645', t, moving, 2);
-    curve(c, -10, -19, -13, -15, -12, -10, '#8a5124', 1);
-    ell(c, 0, -19, 10.5, 6, '#e0a64e');
-    for (let k = 0; k < 6; k++) ell(c, -7 + k * 2.8, -20 + (k % 2) * 3, 1.8, 1.4, '#8a5124');
-    const sway = state === 'play' ? Math.sin(t) * 4 : 0;
-    line(c, 7, -21, 13 + sway, -42, '#e0a64e', 5);
-    line(c, 6, -21, 11 + sway, -40, '#8a5124', 1);
-    ell(c, 15.5 + sway, -43, 5, 2.8, '#e0a64e', 0.2);
-    line(c, 13 + sway, -45, 13 + sway, -49, '#8a5124', 1.2);
-    line(c, 15 + sway, -45, 15.5 + sway, -49, '#8a5124', 1.2);
-    circ(c, 15 + sway, -44, 0.9, '#111');
-  },
-  zebra(c, o) {
-    const { anim: t, moving, state } = o;
-    if (state === 'rest') {
-      ell(c, 0, -5, 11, 5, '#f4f4f4');
-      for (let x = -8; x <= 8; x += 3) line(c, x, -9, x + 1, -2, '#222', 1.2);
-      ell(c, 13, -10, 5, 2.5, '#f4f4f4', -0.4);
-      return;
-    }
-    if (state === 'play') c.rotate(-0.18 * Math.abs(Math.sin(t)));
-    legs(c, [-8, -5, 5, 8], -9, 9, '#ececec', t, moving, 2);
-    curve(c, -11, -14, -14, -10, -13, -7, '#222', 1.2);
-    c.save();
-    c.beginPath(); c.ellipse(0, -13, 11, 5.5, 0, 0, Math.PI * 2);
-    c.moveTo(7, -14); c.lineTo(13, -23); c.lineTo(16, -21); c.lineTo(10, -12);
-    c.fillStyle = '#f4f4f4'; c.fill(); c.clip();
-    for (let x = -10; x <= 16; x += 2.6) line(c, x, -24, x - 1, -6, '#222', 1.1);
-    c.restore();
-    ell(c, 16, -21, 5, 2.4, '#f4f4f4', 0.35);
-    ell(c, 19.5, -19.5, 1.8, 1.6, '#333');
-    line(c, 9, -16, 13.5, -24, '#222', 1.6);
-    circ(c, 15, -22, 0.8, '#111');
-  },
-  gorilla(c, o) {
-    const { anim: t, moving, state } = o;
-    const silver = o.sex === 'M';
-    if (state === 'play') {
-      ell(c, 0, -14, 7.5, 10, '#2f2f33');
-      ell(c, 2, -14, 4, 6, '#4a4048');
-      const thump = Math.sin(t * 2) > 0;
-      line(c, -5, -18, thump ? 1 : -9, thump ? -16 : -10, '#2f2f33', 4);
-      line(c, 6, -18, thump ? 0 : 10, thump ? -15 : -10, '#2f2f33', 4);
-      circ(c, 1, -27, 5, '#2f2f33');
-      ell(c, 2.5, -26, 3, 3, '#5a4a42');
-      line(c, -3, -5, -3, 0, '#2f2f33', 4); line(c, 3, -5, 3, 0, '#2f2f33', 4);
-      return;
-    }
-    if (state === 'rest') {
-      ell(c, 0, -8, 9, 8, '#2f2f33');
-      if (silver) ell(c, -2, -11, 6, 3, '#8a8a90');
-      circ(c, 6, -15, 5, '#2f2f33');
-      ell(c, 8, -14, 3, 3, '#5a4a42');
-      return;
-    }
-    const sw = moving ? Math.sin(t) * 3 : 0;
-    line(c, -6, -7, -6 + sw, 0, '#2f2f33', 4);
-    line(c, -2, -7, -2 - sw, 0, '#2f2f33', 4);
-    ell(c, -1, -11, 10, 8, '#2f2f33');
-    if (silver) ell(c, -3, -15, 7, 3.5, '#8a8a90');
-    line(c, 7, -13, 9 - sw, 0, '#2f2f33', 4.5);
-    circ(c, 9, -18, 5, '#2f2f33');
-    ell(c, 11, -17, 3, 3, '#5a4a42');
-    circ(c, 11, -19, 0.8, '#111');
-  },
-  grizzly(c, o) { bearShape(c, o, { body: '#6e4628', dark: '#5b3a21', hump: '#7a5132', muzzle: '#a07850' }); },
-  polarbear(c, o) { bearShape(c, o, { body: '#f1ede0', dark: '#ddd6c2', hump: '#f8f5ec', muzzle: '#e6dfcc' }); },
-  panda(c, o) {
-    const col = { body: '#f4f2ec', dark: '#1d1d22', hump: '#f4f2ec', muzzle: '#f4f2ec', panda: true };
-    if (o.state === 'play') {
-      // rolling over on its back
-      ell(c, 0, -8, 11, 8, col.body);
-      line(c, -6, -14, -9, -22 + Math.sin(o.anim) * 3, col.dark, 4);
-      line(c, 6, -14, 9, -22 - Math.sin(o.anim) * 3, col.dark, 4);
-      circ(c, 11, -9, 5.5, col.body);
-      ell(c, 12.5, -10, 1.8, 1.4, col.dark);
-      circ(c, 9, -14, 2, col.dark);
-      return;
-    }
-    bearShape(c, o, col);
-  },
-  cheetah(c, o) { catShape(c, o, { body: '#e2b65c', belly: '#f6ead0', dark: '#c99a45', muzzle: '#f6ead0', spots: true, slim: true }); },
-  hippo(c, o) {
-    const { anim: t, moving, state } = o;
-    if (state !== 'rest') {
-      legs(c, [-8, -4, 5, 9], -6, 6, '#76696f', t, moving, 5.0);
-    }
-    const y = state === 'rest' ? 4 : 0;
-    ell(c, 0, -11 + y, 14, 8, '#8a7d86');
-    ell(c, 0, -7 + y, 11, 3, '#b8a1a8');
-    curve(c, -13, -11 + y, -16, -9 + y, -15, -6 + y, '#76696f', 1.5);
-    if (state === 'play') {
-      poly(c, [[11, -13], [24, -22], [24, -10]], '#8a7d86');
-      poly(c, [[13, -13], [22, -19], [22, -11]], '#c2627a');
-      line(c, 21, -19, 21, -16, '#fff', 1.2); line(c, 21, -14, 21, -11, '#fff', 1.2);
-      circ(c, 12, -17, 2, '#76696f');
-      return;
-    }
-    ell(c, 13, -12 + y, 7, 5.5, '#8a7d86');
-    ell(c, 18, -10 + y, 4.2, 4.5, '#a4949c');
-    circ(c, 11, -17 + y, 1.8, '#76696f');
-    circ(c, 14, -15 + y, 0.9, '#111');
-    circ(c, 20, -12 + y, 0.7, '#4a3f45');
-  },
-  rhino(c, o) {
-    const { anim: t, moving, state } = o;
-    if (state === 'play') c.rotate(0.12 * Math.sin(t));
-    const y = state === 'rest' ? 5 : 0;
-    if (state !== 'rest') {
-      legs(c, [-9, -5, 5, 9], -8, 8, '#827d74', t, moving, 5.0);
-    }
-    curve(c, -14, -14 + y, -17, -11 + y, -16, -7 + y, '#827d74', 1.5);
-    ell(c, 0, -13 + y, 14, 7.5, '#9a958c');
-    line(c, -4, -19 + y, -2, -7 + y, 'rgba(0,0,0,0.12)', 1);
-    ell(c, 14, -12 + y, 7, 4.5, '#9a958c', 0.35);
-    poly(c, [[17, -13 + y], [22, -22 + y], [20.5, -12 + y]], '#e3dccb');
-    poly(c, [[13.5, -15 + y], [15, -19 + y], [16, -15 + y]], '#e3dccb');
-    ell(c, 9.5, -17 + y, 1.5, 3, '#827d74', -0.3);
-    circ(c, 12, -14 + y, 0.9, '#111');
-  },
-  flamingo(c, o) {
-    const { anim: t, moving, state } = o;
-    const pink = '#f58fa8';
-    if (moving) {
-      line(c, -1, -20, -1 + Math.sin(t) * 3, 0, '#e2738f', 1.2);
-      line(c, 1, -20, 1 - Math.sin(t) * 3, 0, '#e2738f', 1.2);
-    } else {
-      line(c, 0, -20, 0, 0, '#e2738f', 1.2);
-      line(c, 0, -14, 4, -17, '#e2738f', 1.2);
-    }
-    if (state === 'play') {
-      const f = Math.sin(t * 2) * 4;
-      ell(c, -4, -27 - f, 9, 3, '#e8687f', -0.6);
-      ell(c, 4, -27 - f, 9, 3, '#1d1d22', 0.6);
-    }
-    ell(c, 0, -23, 7, 4.5, pink);
-    ell(c, -5, -22, 4, 2, '#e8687f');
-    if (state === 'rest') { curve(c, 5, -24, 4, -30, -1, -26, pink, 2); circ(c, -2, -26, 2.3, pink); return; }
-    c.beginPath(); c.moveTo(5, -24); c.bezierCurveTo(12, -28, 2, -34, 7, -40);
-    c.strokeStyle = pink; c.lineWidth = 2.2; c.stroke();
-    circ(c, 8, -41, 2.4, pink);
-    curve(c, 9.5, -41, 13, -40, 12, -37, '#222', 1.6);
-    circ(c, 8.5, -42, 0.6, '#111');
-  },
-  kangaroo(c, o) {
-    const { state } = o;
-    const fur = '#b5774a';
-    if (state === 'rest') {
-      ell(c, 0, -6, 10, 5, fur);
-      curve(c, -9, -5, -16, -3, -20, -1, fur, 3);
-      circ(c, 9, -10, 3.5, fur);
-      ell(c, 8, -15, 1.2, 3, fur, -0.3);
-      return;
-    }
-    curve(c, -4, -6, -12, -3, -19, 0, '#a5683e', 3.5);
-    ell(c, 2, -1, 6, 1.6, '#8a5532');
-    ell(c, -1, -7, 5, 4, '#a5683e');
-    ell(c, 0, -15, 5.5, 9, fur, 0.35);
-    ell(c, 2, -13, 3, 6, '#d9b08a', 0.35);
-    line(c, 4, -18, 7, -14, fur, 1.8);
-    circ(c, 5, -25, 3.5, fur);
-    ell(c, 8.5, -24, 2.5, 2, fur);
-    ell(c, 3, -30, 1.3, 3, fur, -0.3);
-    ell(c, 5.5, -30, 1.3, 3, fur, 0.2);
-    circ(c, 6, -26, 0.8, '#111');
-    circ(c, 10.6, -24, 0.7, '#222');
-  },
-  camel(c, o) {
-    const { anim: t, moving, state } = o;
-    const fur = '#c9a06a';
-    if (state === 'rest') {
-      ell(c, 0, -8, 12, 6, fur);
-      ell(c, -1, -14, 5, 4, fur);
-      curve(c, 9, -9, 14, -14, 15, -20, fur, 3.5);
-      ell(c, 17, -20, 4, 2.4, fur, 0.2);
-      return;
-    }
-    legs(c, [-7, -4, 5, 8], -16, 16, '#b88f5c', t, moving, 2.2);
-    curve(c, -10, -20, -13, -16, -12, -12, '#8a6a42', 1);
-    ell(c, 0, -20, 11, 6, fur);
-    ell(c, -1, -26, 6, 5, '#d4ad78');
-    const nod = state === 'play' ? Math.sin(t) * 2 : 0;
-    curve(c, 8, -20, 16, -18, 15, -30 + nod, fur, 4);
-    ell(c, 18, -31 + nod, 5, 2.6, fur, 0.15);
-    circ(c, 16.5, -32.5 + nod, 0.8, '#111');
-    if (state === 'play') circ(c, 25 + (t % 3) * 2, -30, 1.2, 'rgba(255,255,255,0.8)');
-  },
-  penguin(c, o) {
-    const { anim: t, moving, state } = o;
-    if (state === 'play') {
-      c.rotate(-0.1);
-      ell(c, 0, -5, 11, 4.5, '#1d1f26');
-      ell(c, 1, -3.5, 8, 2.5, '#f6f6f2');
-      circ(c, 11, -7, 3.5, '#1d1f26');
-      poly(c, [[14, -7.5], [18, -7], [14, -6]], '#e07a2c');
-      return;
-    }
-    if (moving) c.rotate(Math.sin(t) * 0.12);
-    ell(c, 2, 0, 4, 1.5, '#f0a030');
-    ell(c, 0, -11, 6, 11, '#1d1f26');
-    ell(c, 2, -10, 4, 8.5, '#f6f6f2');
-    circ(c, 1, -22, 4.5, '#1d1f26');
-    ell(c, 3, -20, 2, 1.5, '#f2c230');
-    poly(c, [[5, -23], [9.5, -22], [5, -21]], '#e07a2c');
-    circ(c, 3, -23, 0.9, '#fff');
-    const flap = state === 'idle' ? Math.sin(G.time * 3 + o.id) * 1.5 : 0;
-    line(c, -3, -16, -6 + flap, -8, '#1d1f26', 2.5);
-  },
-};
-
+// ---------- animals (shapes live in animals.js) ----------
 function drawAnimalShape(c, sp, o) { ANIMAL_SHAPES[sp](c, o); }
 
 function drawAnimal(c, a, px, py) {
@@ -1472,7 +1135,7 @@ function drawAnimal(c, a, px, py) {
     c.beginPath(); c.rect(-30, -80, 60, 78); c.clip();
   }
   SHADE = true;
-  drawAnimalShape(c, a.sp, { anim: a.anim, moving, state: swim ? 'idle' : a.state, sex: a.sex, play: sp.play, id: a.id });
+  drawAnimalShape(c, a.sp, { anim: a.anim, moving, state: swim ? 'idle' : a.state, sex: a.sex, play: sp.play, id: a.id, baby: a.baby });
   SHADE = false;
   c.restore();
   if (swim) { ell(c, px, py + 7, 9 * s, 3 * s, 'rgba(255,255,255,0.35)'); }
@@ -1745,6 +1408,23 @@ function drawToolPreview(c) {
       UI.tip = G.tiles[idx(h.x, h.y)].path ? '' : money(PATH_COST);
       break;
     case 'fence': {
+      if (tool.fenceMode !== 'rect' && UI.hoverF) {
+        let segs;
+        if (UI.fenceDown) {
+          const v0 = { x: Math.round(UI.fenceDown.x), y: Math.round(UI.fenceDown.y) }, v1 = { x: Math.round(UI.hoverF.x), y: Math.round(UI.hoverF.y) };
+          segs = v0.x === v1.x && v0.y === v1.y ? [nearestEdge(UI.fenceDown.x, UI.fenceDown.y)] : lineSegs(v0.x, v0.y, v1.x, v1.y);
+        } else segs = [nearestEdge(UI.hoverF.x, UI.hoverF.y)];
+        segs = segs.filter(Boolean);
+        c.globalAlpha = 0.8;
+        for (const [k, i] of segs) {
+          const [ax, ay, bx, by] = segEnds(k, i);
+          line(c, isoX(ax, ay), isoY(ax, ay), isoX(bx, by), isoY(bx, by), '#ffe066', 3);
+          drawFence(c, tool.key, isoX(ax, ay), isoY(ax, ay), isoX(bx, by), isoY(bx, by));
+        }
+        c.globalAlpha = 1;
+        UI.tip = `${money(segs.length * FENCES[tool.key].cost)} · ${segs.length} piece${segs.length === 1 ? '' : 's'}`;
+        break;
+      }
       const a = UI.dragStart || UI.fenceAnchor || h;
       const x0 = Math.min(a.x, h.x), x1 = Math.max(a.x, h.x), y0 = Math.min(a.y, h.y), y1 = Math.max(a.y, h.y);
       c.globalAlpha = 0.75;
