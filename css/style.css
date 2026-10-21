@@ -263,3 +263,41 @@ button.primary { background: linear-gradient(#6fb04f, #3d7a2b); color: #fff; bor
 #goals .actions button, #result .actions button { padding: 7px 14px; }
 #result h1 { margin: 0 0 6px; font: bold 26px Georgia, serif; color: var(--wood); }
 #btn-music.off { opacity: 0.45; text-decoration: line-through; }
+
+/* ---------- minimap & cursor tip ---------- */
+#mapbox {
+  position: absolute; right: 8px; bottom: 8px;
+  display: flex; flex-direction: column; align-items: flex-end; gap: 4px;
+}
+#mapbox .mapbtns { display: flex; gap: 3px; }
+#mapbox .mapbtns button { width: 32px; height: 30px; padding: 0; font-size: 16px; box-shadow: var(--shadow); }
+#minimap {
+  width: 220px; height: 112px;
+  border: 2px solid var(--wood);
+  border-radius: 8px;
+  box-shadow: var(--shadow);
+  cursor: pointer;
+  touch-action: none;
+  background: #1f3518;
+}
+#minimap.off { display: none; }
+#cursor-tip {
+  position: absolute;
+  pointer-events: none;
+  background: rgba(30, 22, 10, 0.88);
+  color: #fff6dc;
+  font-size: 12px;
+  font-weight: bold;
+  padding: 2px 7px;
+  border-radius: 5px;
+  white-space: nowrap;
+  z-index: 5;
+}
+#cursor-tip.bad { color: #ff9a8a; }
+#info .price-row { display: flex; align-items: center; gap: 6px; margin: 6px 0; }
+#info .price-row button { margin: 0; padding: 0 8px; }
+#info:not([hidden]) ~ #mapbox #minimap { display: none; }
+@media (max-width: 720px) {
+  #mapbox { bottom: 80px; }
+  #minimap { width: 150px; height: 76px; }
+}

@@ -26,6 +26,7 @@ function step(dt) {
     updateRating();
     spawnGuests();
     breedAnimals();
+    wearFences();
     checkScenario();
   }
   const m = Math.floor(gameDay() / DAYS_PER_MONTH);
@@ -187,6 +188,7 @@ function animalDecide(a, ex) {
     a.timer = 1;
     return;
   }
+  if (darkness() > 0.5 && r < 0.75) { a.state = 'rest'; a.timer = rand(8, 16); return; }
   if (r < 0.25) { a.state = 'rest'; a.timer = rand(5, 10); return; }
   a.path = wanderTarget(a, ex, 4) || [];
   a.state = a.path.length ? 'walk' : 'idle';
@@ -213,35 +215,55 @@ function breedAnimals() {
   }
 }
 
+// ---------- time of day ----------
+const DAY_CYCLE = DAY_SECONDS * 8;   // one full day/night cycle
+function dayPhase() { return (G.time % DAY_CYCLE) / DAY_CYCLE; }
+// 0 in daylight, 1 in the middle of the night
+function darkness() {
+  const p = dayPhase(), d = Math.min(Math.abs(p - 0.85), 1 - Math.abs(p - 0.85));
+  return clamp((0.17 - d) / 0.08, 0, 1);
+}
+// warm sunrise / sunset glow
+function duskGlow() {
+  const p = dayPhase(), bell = (c, w) => Math.max(0, 1 - Math.min(Math.abs(p - c), 1 - Math.abs(p - c)) / w);
+  return Math.max(bell(0.68, 0.06), bell(0.02, 0.05));
+}
+
 // ---------- guests ----------
 function fairPrice() {
   const species = new Set(G.animals.filter(a => !a.escaped).map(a => a.sp)).size;
-  return Math.min(60, 5 + species * 3 + G.animals.length * 0.25 + G.rating / 10);
+  let rides = 0;
+  for (const o of G.objects.values()) if (OBJECTS[o.type].cat === 'ride') rides++;
+  return Math.min(70, 5 + species * 3 + G.animals.length * 0.25 + G.rating / 10 + Math.min(rides, 4) * 2);
 }
 
 function spawnGuests() {
-  if (G.guests.length >= 350) return;
+  if (G.guests.length >= 400) return;
   const ratio = G.admission / fairPrice();
   const priceFactor = ratio <= 1 ? 1 : Math.max(0, 2 - ratio);
   const animalFactor = G.animals.length ? 1 : 0.25;
-  const chance = (0.1 + 0.9 * Math.pow(G.rating / 100, 1.3)) * priceFactor * animalFactor;
+  const night = 1 - 0.85 * darkness();
+  const chance = (0.1 + 0.9 * Math.pow(G.rating / 100, 1.3)) * priceFactor * animalFactor * night;
   if (Math.random() < chance) spawnGuest(ratio);
   if (Math.random() < chance * 0.5) spawnGuest(ratio);
 }
 
 const SKINS = ['#f1c27d', '#e0ac69', '#c68642', '#8d5524', '#ffdbac', '#a26a42'];
-const HAIRS = ['#2b1d12', '#5a3a1a', '#a5682a', '#e6c46a', '#1b1b1b', '#7b2d12', '#bbbbbb'];
+const HAIRS = ['#2b1d12', '#5a3a1a', '#a5682a', '#e6c46a', '#1b1b1b', '#7b2d12'];
 function spawnGuest(priceRatio) {
-  const kid = Math.random() < 0.3;
+  const kid = Math.random() < 0.3, elder = !kid && Math.random() < 0.15;
   const g = {
     id: G.nextId++, kind: 'guest', name: pick(GUEST_NAMES) + ' ' + pick(GUEST_LAST),
     x: ENTRANCE.x + 0.5, y: ENTRANCE.y + 0.5, path: [], prev: -1,
-    hunger: rand(55, 100), thirst: rand(55, 100), energy: rand(75, 100), bladder: rand(60, 100),
-    happy: rand(55, 75), cash: randi(25, 110), thoughts: [], seen: [], state: 'walk', timer: 0,
-    kid, shirt: hslHex(randi(0, 359), randi(45, 75), randi(40, 60)), pants: pick(['#2f3e5c', '#4a4a4a', '#6b5440', '#20304a']),
-    skin: pick(SKINS), hair: pick(HAIRS), balloon: kid && Math.random() < 0.4 ? hslHex(randi(0, 359), 80, 60) : null,
+    hunger: rand(55, 100), thirst: rand(55, 100), energy: rand(75, 100), bladder: rand(60, 100), fun: rand(50, 85),
+    happy: rand(55, 75), cash: randi(25, 120), thoughts: [], seen: [], state: 'walk', timer: 0,
+    kid, elder, shirt: hslHex(randi(0, 359), randi(45, 75), randi(40, 60)), pants: pick(['#2f3e5c', '#4a4a4a', '#6b5440', '#20304a', '#6a7a8a']),
+    skin: pick(SKINS), hair: elder ? pick(['#d8d8d8', '#bbbbbb', '#eeeeee']) : pick(HAIRS),
+    hat: !kid && Math.random() < 0.15 ? 'sun' : null,
+    balloon: kid && Math.random() < 0.25 ? hslHex(randi(0, 359), 80, 60) : null,
     carry: null, carryT: 0, timeIn: 0, maxTime: rand(DAY_SECONDS * 8, DAY_SECONDS * 18), fav: null, favScore: 0,
     face: 1, anim: Math.random() * 10, thought: null, thoughtT: 0, needCooldown: 0, goal: null,
+    map: false, souvenir: null,
   };
   if (g.cash < G.admission) return;
   g.cash -= G.admission;
@@ -255,17 +277,26 @@ function spawnGuest(priceRatio) {
 }
 
 function removeGuest(g) {
+  if (g.onRide) { const o = G.objects.get(g.onRide); if (o) o.riders = Math.max(0, (o.riders || 0) - 1); }
   G.guests.splice(G.guests.indexOf(g), 1);
   if (UI.sel && UI.sel.id === g.id) UI.select(null);
+}
+
+function guestSpeed(g) {
+  if (g.state === 'leave') return 1.5;
+  return g.elder ? 0.95 : g.kid ? 1.4 : 1.25;
 }
 
 function updateGuest(g, dt) {
   g.timeIn += dt;
   g.thoughtT -= dt;
   g.needCooldown -= dt;
-  g.hunger -= dt * 0.3; g.thirst -= dt * 0.4; g.energy -= dt * 0.2; g.bladder -= dt * 0.28;
-  for (const k of ['hunger', 'thirst', 'energy', 'bladder']) g[k] = clamp(g[k], 0, 100);
+  g.hunger -= dt * 0.3; g.thirst -= dt * 0.4; g.bladder -= dt * 0.28;
+  g.energy -= dt * (g.elder ? 0.3 : 0.2);
+  if (g.state !== 'ride') g.fun -= dt * (g.kid ? 0.32 : 0.2);
+  for (const k of ['hunger', 'thirst', 'energy', 'bladder', 'fun']) g[k] = clamp(g[k], 0, 100);
   if (g.hunger < 20 || g.thirst < 20 || g.bladder < 15) g.happy -= dt * 0.5;
+  if (g.fun < 15) g.happy -= dt * 0.25;
   g.happy = clamp(g.happy, 0, 100);
   if (g.carry) {
     g.carryT -= dt;
@@ -274,11 +305,11 @@ function updateGuest(g, dt) {
 
   switch (g.state) {
     case 'walk': case 'goto': case 'leave':
-      if (moveAlong(g, g.state === 'leave' ? 1.5 : 1.25, dt)) guestArrive(g);
+      if (moveAlong(g, guestSpeed(g), dt)) guestArrive(g);
       break;
-    case 'view': case 'use': case 'sit':
+    case 'view': case 'use': case 'sit': case 'ride':
       g.timer -= dt;
-      if (g.state === 'sit') g.energy = Math.min(100, g.energy + dt * 12);
+      if (g.state === 'sit') g.energy = Math.min(100, g.energy + dt * 6);
       if (g.timer <= 0) { finishActivity(g); g.state = 'walk'; }
       break;
   }
@@ -323,7 +354,19 @@ function guestArrive(g) {
   }
 
   if (g.timeIn > g.maxTime || g.energy < 8 || g.happy < 15) { startLeaving(g); return; }
+  if (darkness() > 0.6 && Math.random() < 0.03) {
+    startLeaving(g);
+    think(g, '🌙', "It's getting dark. Time to head home.");
+    return;
+  }
   if (g.needCooldown <= 0 && seekNeed(g, tx, ty)) return;
+  if (tryImpulse(g, tx, ty)) return;
+
+  // guests with a map head for exhibits they haven't seen yet
+  if (g.map && Math.random() < 0.5) {
+    const path = findPath(tx, ty, (x, y) => G.tiles[idx(x, y)].path && !!unseenExhibitNear(g, x, y), stepOnPath, 2500);
+    if (path && path.length) { g.path = path.slice(0, 12); g.state = 'walk'; g.prev = idx(tx, ty); return; }
+  }
 
   // random walk along the paths, avoiding doubling back
   const opts = [];
@@ -351,11 +394,22 @@ function unseenExhibitNear(g, tx, ty) {
   return null;
 }
 
+function priceOf(o) { const u = OBJECTS[o.type].use; return o.price != null ? o.price : u ? u.price : 0; }
+
+// Would this guest use this facility right now?
+function guestWants(g, o, need) {
+  const def = OBJECTS[o.type];
+  if (!def.use || def.use.need !== need) return false;
+  if (def.kids && !g.kid) return false;
+  return priceOf(o) <= g.cash;
+}
+
 const NEEDS = [
-  { stat: 'thirst',  below: 40, match: o => OBJECTS[o.type].sells === 'drink', icon: '🥤', miss: "I'm thirsty, but there's nowhere to buy a drink." },
-  { stat: 'hunger',  below: 40, match: o => OBJECTS[o.type].sells === 'food' || OBJECTS[o.type].sells === 'treat', icon: '🍔', miss: "I'm hungry! Where can I get some food?" },
-  { stat: 'bladder', below: 35, match: o => o.type === 'restroom', icon: '🚻', miss: 'I really need a restroom!' },
-  { stat: 'energy',  below: 35, match: o => o.type === 'bench', icon: '🪑', miss: 'My feet hurt. I wish there were benches.' },
+  { stat: 'bladder', below: 35, icon: '🚻', miss: 'I really need a restroom!' },
+  { stat: 'thirst',  below: 40, icon: '🥤', miss: "I'm thirsty, but there's nowhere to get a drink." },
+  { stat: 'hunger',  below: 40, icon: '🍔', miss: "I'm hungry! Where can I get some food?" },
+  { stat: 'energy',  below: 35, icon: '🪑', miss: 'My feet hurt. I wish there were benches.' },
+  { stat: 'fun',     below: 30, icon: '🎡', miss: "I'm bored. There's nothing fun to do here." },
 ];
 
 function seekNeed(g, tx, ty) {
@@ -366,10 +420,10 @@ function seekNeed(g, tx, ty) {
     if (!G.tiles[idx(x, y)].path) return false;
     for (const [dx, dy] of DIRS) {
       const o = objAt(x + dx, y + dy);
-      if (o && need.match(o)) { goal = o; return true; }
+      if (o && guestWants(g, o, need.stat)) { goal = o; return true; }
     }
     return false;
-  }, stepOnPath, 3000);
+  }, stepOnPath, g.map ? 4500 : 1500);
   if (path && goal) {
     g.path = path;
     g.goal = goal.id;
@@ -379,41 +433,93 @@ function seekNeed(g, tx, ty) {
     return true;
   }
   g.needCooldown = 8;
-  g.happy -= 3;
+  if (need.stat !== 'fun' || g.fun < 15) g.happy -= 3;
   think(g, need.icon, need.miss);
+  return false;
+}
+
+// Spur-of-the-moment visits: gift shops, info kiosks, rides they walk past.
+function tryImpulse(g, tx, ty) {
+  for (const [dx, dy] of DIRS) {
+    const o = objAt(tx + dx, ty + dy);
+    if (!o) continue;
+    const def = OBJECTS[o.type];
+    if (!def.use) continue;
+    const n = def.use.need;
+    const want = (n === 'souvenir' && !g.souvenir && g.happy > 55 && g.timeIn > g.maxTime * 0.4 && Math.random() < 0.5) ||
+      (n === 'map' && !g.map && Math.random() < 0.6) ||
+      (n === 'fun' && g.fun < 70 && Math.random() < 0.35);
+    if (want && guestWants(g, o, n)) { g.goal = o.id; useBuilding(g); return true; }
+  }
   return false;
 }
 
 function useBuilding(g) {
   const o = G.objects.get(g.goal);
   g.goal = null;
-  if (!o) { g.state = 'walk'; return; }
-  const def = OBJECTS[o.type];
-  if (def.price) {
-    if (g.cash < def.price) { think(g, '💸', "I can't afford anything here."); g.state = 'walk'; return; }
-    g.cash -= def.price;
-    G.money += def.price;
-    G.month.sales += def.price;
-    o.sales = (o.sales || 0) + def.price;
-    floatText(o.x + 0.5, o.y + 0.5, '+' + money(def.price), '#9be564');
-    Sound.coinAt(o.x + 0.5, o.y + 0.5);
+  if (!o || !OBJECTS[o.type].use) { g.state = 'walk'; return; }
+  const def = OBJECTS[o.type], u = def.use, price = priceOf(o);
+  if (def.cat === 'ride' && (o.riders || 0) >= u.capacity) {
+    think(g, '⏳', `The line for the ${def.name} is too long.`);
+    g.state = 'walk';
+    return;
   }
+  if (price > g.cash) { think(g, '💸', "I can't afford that."); g.state = 'walk'; g.needCooldown = 6; return; }
+  // guests compare the price to what they think it's worth
+  const urgent = u.need !== 'fun' && u.need !== 'souvenir' && u.need !== 'map' && g[u.need] < 15;
+  if (u.price > 0 && price > u.price * 1.6 && !(urgent && price < u.price * 2.5)) {
+    think(g, '😤', `${money(price)} at the ${def.name}? That's way too expensive!`);
+    g.happy -= 2;
+    g.state = 'walk';
+    g.needCooldown = 10;
+    return;
+  }
+  if (u.price === 0 && price > 0 && price > 2) {
+    think(g, '😤', `Paying ${money(price)} for the ${def.name.toLowerCase()}? No thanks.`);
+    g.state = 'walk';
+    g.needCooldown = 10;
+    return;
+  }
+  if (price > 0) {
+    g.cash -= price;
+    G.money += price;
+    G.month.sales += price;
+    o.sales = (o.sales || 0) + price;
+    o.monthSales = (o.monthSales || 0) + price;
+    floatText(o.x + 0.5, o.y + 0.5, '+' + money(price), '#9be564');
+    Sound.coinAt(o.x + 0.5, o.y + 0.5);
+    if (u.price && price > u.price * 1.2) g.happy -= 2;
+  }
+  o.uses = (o.uses || 0) + 1;
   g.useType = o.type;
-  g.state = o.type === 'bench' ? 'sit' : 'use';
-  g.timer = o.type === 'bench' ? 6 : 2;
+  g.useObj = o.id;
+  g.state = def.cat === 'ride' ? 'ride' : u.sit ? 'sit' : 'use';
+  g.timer = u.time;
+  if (def.cat === 'ride') { o.riders = (o.riders || 0) + 1; g.onRide = o.id; }
   const dx = o.x - Math.floor(g.x), dy = o.y - Math.floor(g.y);
   g.face = dx - dy >= 0 ? 1 : -1;
 }
 
 function finishActivity(g) {
-  switch (g.useType) {
-    case 'burger': g.hunger = 100; g.happy += 4; g.carry = 'burger'; g.carryT = 6; think(g, '😋', 'That burger was delicious!'); break;
-    case 'drinks': g.thirst = 100; g.happy += 3; g.carry = 'drink'; g.carryT = 6; think(g, '😋', 'Ahh, refreshing!'); break;
-    case 'icecream': g.hunger = Math.min(100, g.hunger + 35); g.thirst = Math.min(100, g.thirst + 15); g.happy += 6; g.carry = 'icecream'; g.carryT = 5; think(g, '🍦', 'Ice cream! Best day ever.'); break;
-    case 'restroom': g.bladder = 100; g.happy += 2; think(g, '😌', 'What a relief.'); break;
-    case 'bench': g.happy += 2; think(g, '😌', 'Nice to sit down for a bit.'); break;
+  const o = G.objects.get(g.useObj), def = g.useType && OBJECTS[g.useType];
+  if (g.onRide) {
+    if (o) o.riders = Math.max(0, (o.riders || 0) - 1);
+    g.onRide = null;
+  }
+  if (def && def.use) {
+    const u = def.use;
+    for (const k in u.restore) g[k] = clamp(g[k] + u.restore[k], 0, 100);
+    if (u.carry) { g.carry = u.carry; g.carryT = 6; }
+    if (u.need === 'souvenir') {
+      g.souvenir = pick(g.kid ? ['balloon', 'plush', 'plush'] : ['plush', 'hat', 'balloon']);
+      if (g.souvenir === 'balloon') g.balloon = hslHex(randi(0, 359), 80, 60);
+      if (g.souvenir === 'hat') g.hat = 'safari';
+    }
+    if (u.need === 'map') g.map = true;
+    think(g, def.cat === 'ride' ? '🤩' : u.need === 'hunger' ? '😋' : '😌', u.thought);
   }
   g.useType = null;
+  g.useObj = null;
   if (g.viewing != null) { viewExhibit(g, exhibitByKey(g.viewing)); g.viewing = null; }
 }
 
@@ -431,16 +537,26 @@ function finishCarry(g) {
   }
 }
 
+function nearObject(x, y, type, r) {
+  const tx = Math.floor(x), ty = Math.floor(y);
+  for (let dy = -r; dy <= r; dy++) for (let dx = -r; dx <= r; dx++) {
+    const o = objAt(tx + dx, ty + dy);
+    if (o && o.type === type) return o;
+  }
+  return null;
+}
+
 function viewExhibit(g, ex) {
   if (!ex) return;
   const animals = ex.stats.animals;
   if (!animals.length) { g.happy -= 1; think(g, '😕', 'Why is this exhibit empty?'); return; }
-  let value = 0, avg = 0, player = null, baby = null, bestSp = null, bestV = 0;
+  let value = 0, avg = 0, player = null, baby = null, bestSp = null, bestV = 0, sleeping = 0;
   for (const a of animals) {
     const sp = SPECIES[a.sp], v = sp.appeal * (0.25 + 0.75 * a.happy / 100) * (a.baby ? 1.5 : 1);
     value += v;
     avg += a.happy;
     if (a.state === 'play') player = a;
+    if (a.state === 'rest') sleeping++;
     if (a.baby) baby = a;
     if (v > bestV) { bestV = v; bestSp = a.sp; }
   }
@@ -456,18 +572,24 @@ function viewExhibit(g, ex) {
   } else if (baby) {
     gain += 3;
     think(g, '🥰', `Aww, a baby ${SPECIES[baby.sp].name.toLowerCase()}!`);
+  } else if (sleeping === animals.length) {
+    gain *= 0.6;
+    think(g, '😴', `The ${sp.plural.toLowerCase()} are all asleep.`);
   } else if (gain > 8) {
     think(g, '😍', `I love the ${sp.plural.toLowerCase()}!`);
   } else {
     think(g, '🙂', `The ${sp.plural.toLowerCase()} are nice.`);
   }
   g.happy = clamp(g.happy + gain, 0, 100);
+  g.fun = clamp(g.fun + Math.max(0, gain) * 1.1, 0, 100);
   if (bestV > g.favScore) { g.favScore = bestV; g.fav = bestSp; }
-  if (g.happy > 65 && Math.random() < 0.35 && g.cash > 2) {
-    const amt = Math.min(g.cash, randi(1, 2 + Math.floor(value / 8)));
+  const box = nearObject(g.x, g.y, 'donation', 4);
+  if (g.happy > 65 && Math.random() < (box ? 0.6 : 0.3) && g.cash > 2) {
+    const amt = Math.min(g.cash, randi(1, 2 + Math.floor(value / (box ? 5 : 8))));
     g.cash -= amt;
     G.money += amt;
     G.month.donations += amt;
+    if (box) box.sales = (box.sales || 0) + amt;
     floatText(g.x, g.y, `+${money(amt)} donation`, '#9be564');
     Sound.coinAt(g.x, g.y);
   }
@@ -484,11 +606,12 @@ function startLeaving(g) {
 }
 
 // ---------- staff ----------
+// s.task is a string so tasks can be reserved: 'ex:<key>', 'cap:<animal id>', 'fence:h<i>'
 function updateStaff(s, dt) {
   s.thoughtT -= dt;
   if (s.state === 'go' || s.state === 'walk') {
     if (moveAlong(s, 1.6, dt)) {
-      if (s.state === 'go') { s.state = 'work'; s.timer = 3; }
+      if (s.state === 'go') { s.state = 'work'; s.timer = s.task && s.task.startsWith('fence') ? 2.5 : 3; }
       else { s.state = 'idle'; s.timer = 0.3; }
     }
     return;
@@ -496,9 +619,11 @@ function updateStaff(s, dt) {
   s.timer -= dt;
   if (s.state === 'work') s.anim += dt * 4;
   if (s.timer > 0) return;
-  if (s.state === 'work') { s.role === 'keeper' ? keeperWork(s) : sweep(s); }
+  if (s.state === 'work') { s.role === 'keeper' ? keeperWork(s) : maintWork(s); }
   s.role === 'keeper' ? keeperDecide(s) : maintDecide(s);
 }
+
+function takenTasks(s) { return new Set(G.staff.filter(o => o !== s && o.task).map(o => o.task)); }
 
 function keeperNeeds(ex) {
   const st = ex.stats, diets = [];
@@ -511,11 +636,23 @@ function keeperNeeds(ex) {
 }
 
 function keeperDecide(s) {
-  const sx = Math.floor(s.x), sy = Math.floor(s.y);
-  const taken = new Set(G.staff.filter(o => o !== s && o.task != null).map(o => o.task));
+  const sx = Math.floor(s.x), sy = Math.floor(s.y), taken = takenTasks(s);
+  // escaped animals come first
+  for (const a of G.animals) {
+    if (!a.escaped || taken.has('cap:' + a.id)) continue;
+    const ax = Math.floor(a.x), ay = Math.floor(a.y);
+    const path = findPath(sx, sy, (x, y) => Math.abs(x - ax) + Math.abs(y - ay) <= 1, stepOnLand, 4000);
+    if (path) {
+      s.task = 'cap:' + a.id;
+      s.path = path;
+      s.state = 'go';
+      think(s, '🎯', null, 2);
+      return;
+    }
+  }
   let best = null, bestScore = 0.9;
   for (const ex of G.exhibits) {
-    if (!ex.stats.animals.length || taken.has(ex.key)) continue;
+    if (!ex.stats.animals.length || taken.has('ex:' + ex.key)) continue;
     const need = keeperNeeds(ex).score;
     const c = ex.tiles[0], d = Math.abs((c % MAP_W) - sx) + Math.abs(((c / MAP_W) | 0) - sy);
     const score = need / (1 + d / 15);
@@ -524,7 +661,7 @@ function keeperDecide(s) {
   if (best) {
     const path = findPath(sx, sy, (x, y) => G.exMap[idx(x, y)] === best.id, stepOnLand, 3000);
     if (path) {
-      s.task = best.key;
+      s.task = 'ex:' + best.key;
       // walk a few tiles into the exhibit so the keeper is visibly inside
       const [ix, iy] = path.length ? path[path.length - 1] : [sx, sy];
       const target = pick(best.tiles);
@@ -539,9 +676,39 @@ function keeperDecide(s) {
   wanderStaff(s, sx, sy);
 }
 
+// Where a recaptured animal goes: an exhibit with its own kind, else any exhibit.
+function homeFor(a) {
+  const own = G.exhibits.filter(e => e.stats.bySpecies[a.sp]);
+  const options = own.length ? own : G.exhibits.filter(e => !e.stats.animals.length);
+  const ex = options[0] || G.exhibits[0];
+  if (!ex) return null;
+  const tiles = ex.tiles.filter(i => G.tiles[i].t !== 'water' || SPECIES[a.sp].swims);
+  return tiles.length ? pick(tiles) : null;
+}
+
 function keeperWork(s) {
-  const ex = exhibitByKey(s.task);
+  const task = s.task;
   s.task = null;
+  if (!task) return;
+  if (task.startsWith('cap:')) {
+    const a = G.animals.find(x => x.id === +task.slice(4));
+    if (!a || !a.escaped) return;
+    if (Math.hypot(a.x - s.x, a.y - s.y) > 2) return;
+    const home = homeFor(a);
+    if (home == null) { think(s, '❓', null, 2); notify(`Build an exhibit so ${a.name} can be returned!`, 'warn'); return; }
+    a.x = (home % MAP_W) + 0.5;
+    a.y = ((home / MAP_W) | 0) + 0.5;
+    a.path = [];
+    a.state = 'idle';
+    a.timer = 2;
+    a.escaped = false;
+    s.done++;
+    think(s, '✔️', null, 2);
+    notify(`${s.name} caught ${a.name} the ${SPECIES[a.sp].name} and returned it to an exhibit.`, 'good', { x: a.x, y: a.y });
+    updateExhibitStats();
+    return;
+  }
+  const ex = exhibitByKey(+task.slice(3));
   if (!ex) return;
   const need = keeperNeeds(ex);
   for (const diet of need.diets) G.food.push({ x: s.x + rand(-0.3, 0.3), y: s.y + rand(-0.3, 0.3), diet, amount: 100 });
@@ -556,21 +723,56 @@ function keeperWork(s) {
   updateExhibitStats();
 }
 
+// Tiles on either side of a fence segment.
+function fenceSides(k, i) {
+  if (k === 'h') { const x = i % MAP_W, y = (i / MAP_W) | 0; return [[x, y], [x, y - 1]]; }
+  const x = i % (MAP_W + 1), y = (i / (MAP_W + 1)) | 0;
+  return [[x, y], [x - 1, y]];
+}
+
 function maintDecide(s) {
   const sx = Math.floor(s.x), sy = Math.floor(s.y);
-  if (G.litterCount[idx(sx, sy)]) { s.state = 'work'; s.timer = 1.5; return; }
-  const path = findPath(sx, sy, (x, y) => G.litterCount[idx(x, y)] > 0, stepOnPath, 2500);
-  if (path) { s.path = path; s.state = 'go'; return; }
+  if (G.litterCount[idx(sx, sy)]) { s.task = 'litter'; s.state = 'work'; s.timer = 1.5; return; }
+  const path = findPath(sx, sy, (x, y) => G.litterCount[idx(x, y)] > 0, stepOnPath, 1200);
+  if (path) { s.task = 'litter'; s.path = path; s.state = 'go'; return; }
+  // repair the most worn fence nearby
+  const taken = takenTasks(s);
+  let best = null, bestScore = Infinity;
+  for (const [k, F, C] of [['h', G.hF, G.hC], ['v', G.vF, G.vC]]) {
+    for (let i = 0; i < F.length; i++) {
+      if (!F[i] || C[i] > 60 || taken.has('fence:' + k + i)) continue;
+      const [[x, y]] = fenceSides(k, i);
+      const score = C[i] + (Math.abs(x - sx) + Math.abs(y - sy)) * 1.5;
+      if (score < bestScore) { bestScore = score; best = [k, i]; }
+    }
+  }
+  if (best) {
+    const sides = fenceSides(best[0], best[1]).filter(([x, y]) => inMap(x, y) && G.tiles[idx(x, y)].t !== 'water');
+    const p = findPath(sx, sy, (x, y) => sides.some(([a, b]) => a === x && b === y), stepOnLand, 4000);
+    if (p) { s.task = 'fence:' + best[0] + best[1]; s.path = p; s.state = 'go'; return; }
+  }
+  s.task = null;
   wanderStaff(s, sx, sy);
 }
 
-function sweep(s) {
-  const i = idx(Math.floor(s.x), Math.floor(s.y));
-  if (!G.litterCount[i]) return;
-  G.litter = G.litter.filter(l => idx(Math.floor(l.x), Math.floor(l.y)) !== i);
-  G.litterCount[i] = 0;
-  s.done++;
-  think(s, '🧹', null, 1.5);
+function maintWork(s) {
+  const task = s.task;
+  s.task = null;
+  if (task === 'litter') {
+    const i = idx(Math.floor(s.x), Math.floor(s.y));
+    if (!G.litterCount[i]) return;
+    G.litter = G.litter.filter(l => idx(Math.floor(l.x), Math.floor(l.y)) !== i);
+    G.litterCount[i] = 0;
+    s.done++;
+    think(s, '🧹', null, 1.5);
+  } else if (task && task.startsWith('fence:')) {
+    const k = task[6], i = +task.slice(7), F = k === 'h' ? G.hF : G.vF, C = k === 'h' ? G.hC : G.vC;
+    if (!F[i]) return;
+    C[i] = 100;
+    s.done++;
+    think(s, '🔧', null, 2);
+    Sound.play('fence');
+  }
 }
 
 function wanderStaff(s, sx, sy) {
@@ -580,6 +782,37 @@ function wanderStaff(s, sx, sy) {
     // off the path network: head back to the nearest path
     const p = findPath(sx, sy, (x, y) => G.tiles[idx(x, y)].path, stepOnLand, 2000);
     if (p && p.length) { s.path = p; s.state = 'walk'; } else { s.state = 'idle'; s.timer = 2; }
+  }
+}
+
+// ---------- fence wear ----------
+const STRONG = ['lion', 'tiger', 'elephant', 'rhino', 'hippo', 'grizzly', 'polarbear', 'gorilla'];
+const FENCE_WEAR = { 1: 0.07, 2: 0.05, 3: 0.02 };
+function wearFences() {
+  let broke = null;
+  for (const [k, F, C] of [['h', G.hF, G.hC], ['v', G.vF, G.vC]]) {
+    for (let i = 0; i < F.length; i++) {
+      if (!F[i]) continue;
+      C[i] -= FENCE_WEAR[F[i]] * rand(0.5, 1.5);
+      if (C[i] <= 0) { F[i] = 0; C[i] = 0; broke = fenceSides(k, i)[0]; }
+    }
+  }
+  // unhappy, powerful animals bash the fences around them
+  for (const a of G.animals) {
+    if (a.escaped || a.happy > 40 || a.baby || !STRONG.includes(a.sp) || Math.random() > 0.3) continue;
+    const x = Math.floor(a.x), y = Math.floor(a.y);
+    const edges = [['h', hIdx(x, y)], ['h', hIdx(x, y + 1)], ['v', vIdx(x, y)], ['v', vIdx(x + 1, y)]];
+    for (const [k, i] of edges) {
+      const F = k === 'h' ? G.hF : G.vF, C = k === 'h' ? G.hC : G.vC;
+      if (!F[i]) continue;
+      C[i] -= 4 / F[i];
+      if (Math.random() < 0.1) floatText(a.x, a.y, 'BANG!', '#ffb0a0');
+      if (C[i] <= 0) { F[i] = 0; C[i] = 0; broke = [x, y]; }
+    }
+  }
+  if (broke) {
+    computeExhibits();
+    notify('A fence has collapsed! Maintenance workers repair worn fences.', 'bad', { x: broke[0] + 0.5, y: broke[1] + 0.5 });
   }
 }
 
@@ -599,11 +832,14 @@ function updateRating() {
 
 function endMonth(m) {
   const salaries = G.staff.reduce((s, st) => s + STAFF_TYPES[st.role].salary, 0);
-  G.money -= salaries;
+  let upkeep = 0;
+  for (const o of G.objects.values()) { upkeep += OBJECTS[o.type].upkeep || 0; o.monthSales = 0; }
+  G.money -= salaries + upkeep;
   G.month.salaries += salaries;
+  G.month.upkeep = (G.month.upkeep || 0) + upkeep;
   const mo = G.month;
   const income = mo.admissions + mo.sales + mo.donations;
-  const expenses = mo.construction + mo.animals + mo.salaries;
+  const expenses = mo.construction + mo.animals + mo.salaries + mo.upkeep;
   G.lastMonth = { ...mo, income, expenses, name: MONTHS[G.monthIndex % 12] };
   notify(`${G.lastMonth.name} report: income ${money(income)}, expenses ${money(expenses)}, ${mo.guests} guests.`, income >= expenses ? 'good' : 'warn');
   Sound.play('chime');

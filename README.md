@@ -17,7 +17,13 @@ Check your progress any time with the 🎯 button in the top bar. Scenarios are 
 2. **Terrain, Plants and Exhibit items**: shape the habitat. Each species has favourite terrain, plants, rocks and shelters.
 3. **Animals**: pick a species and click inside an exhibit to adopt it.
 4. **Staff**: zookeepers feed animals, clean dung and treat sick animals. Maintenance workers sweep litter.
-5. **Guests**: food and drink stands, restrooms, benches, trash cans and decorations go next to paths.
+5. **Food, Rides and Decor**: food and drink stands, restrooms, picnic tables, gift shops, info kiosks,
+   donation boxes, a playground, a carousel, a swing ride and a Ferris wheel all go next to paths.
+   Click a building to set its price. Guests refuse anything they think is overpriced.
+
+The zoo runs through day and night. Lamps and rides light up after dark, animals sleep, and fewer guests arrive.
+Fences wear out over time, and unhappy strong animals bash them, so hire maintenance workers to repair them.
+Zookeepers recapture escaped animals.
 
 Click any animal, guest, staff member or exhibit to see what they're thinking. An exhibit's panel lists its
 suitability score for each species and what the animals still want, for example
@@ -25,7 +31,9 @@ suitability score for each species and what the animals still want, for example
 
 Sound is generated in the browser (no audio files). Use 🔊 to mute and 🎵 to toggle the music.
 
-Controls: drag or WASD to scroll, wheel or pinch to zoom, Space to pause, 1/2/3 to change speed, G for the grid, Esc to cancel.
+Controls: drag, WASD or mouse-at-edge to scroll; wheel, pinch or ＋/－ to zoom; minimap to jump; right-click or Esc to cancel a tool;
+Ctrl+Z to undo a build. Tool keys: Q select, T terrain, P paths, F fences, N animals, L plants, E exhibit items, B food,
+R rides, V decor, H staff, X bulldoze, M minimap, Home to return to the entrance. Space pauses, 1/2/3 set the speed, G shows the grid.
 The game autosaves every three months, and the 💾/📂 buttons save and load by hand (saves live in the browser's localStorage).
 
 ## Code layout

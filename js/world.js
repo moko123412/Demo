@@ -36,6 +36,7 @@ function newGame() {
   G = {
     money: START_MONEY, time: 0, speed: 1, admission: 12,
     tiles: [], hF: new Uint8Array(MAP_W * (MAP_H + 1)), vF: new Uint8Array((MAP_W + 1) * MAP_H),
+    hC: new Float32Array(MAP_W * (MAP_H + 1)), vC: new Float32Array((MAP_W + 1) * MAP_H),
     objects: new Map(), animals: [], guests: [], staff: [], litter: [], dung: [], food: [], floats: [],
     exhibits: [], exMap: new Int32Array(MAP_W * MAP_H).fill(-1), litterCount: new Uint16Array(MAP_W * MAP_H),
     nextId: 1, rating: 30, monthIndex: 0, totalGuests: 0, statT: 0,
@@ -63,7 +64,7 @@ function newGame() {
   terrainDirty = true;
 }
 
-function freshMonth() { return { admissions: 0, sales: 0, donations: 0, construction: 0, animals: 0, salaries: 0, guests: 0 }; }
+function freshMonth() { return { admissions: 0, sales: 0, donations: 0, construction: 0, animals: 0, salaries: 0, upkeep: 0, guests: 0 }; }
 
 function addObject(type, x, y) {
   const o = { id: G.nextId++, type, x, y, v: Math.random() };
@@ -311,7 +312,7 @@ function placeFenceRect(x0, y0, x1, y1, type) {
   const todo = segs.filter(([k, i]) => (k === 'h' ? G.hF : G.vF)[i] !== type);
   if (!todo.length) return false;
   if (!spend(todo.length * FENCES[type].cost)) return false;
-  for (const [k, i] of todo) (k === 'h' ? G.hF : G.vF)[i] = type;
+  for (const [k, i] of todo) { (k === 'h' ? G.hF : G.vF)[i] = type; (k === 'h' ? G.hC : G.vC)[i] = 100; }
   Sound.play('fence');
   const before = G.exhibits.length;
   computeExhibits();
@@ -325,7 +326,7 @@ function canPlaceObject(x, y, type) {
   if (t.obj) return 'Something is already there';
   if (t.path) return "Can't build on a path";
   if (t.t === 'water') return "Can't build on water";
-  if (def.cat === 'building' || def.cat === 'scenery') {
+  if (def.cat === 'building' || def.cat === 'scenery' || def.cat === 'ride') {
     if (G.exMap[idx(x, y)] >= 0) return 'Guest buildings go outside exhibits';
     if (!adjacentToPath(x, y)) return 'Must be next to a path';
   }
@@ -364,7 +365,7 @@ function createAnimal(sp, x, y, baby = false) {
   return {
     id: G.nextId++, kind: 'animal', sp, name: pick(ANIMAL_NAMES), sex: Math.random() < 0.5 ? 'M' : 'F',
     x, y, path: [], state: 'idle', timer: rand(0.5, 2), hunger: 85, health: 100, happy: 55,
-    baby, born: G.time, sick: false, keeperT: 0, face: Math.random() < 0.5 ? 1 : -1, anim: 0,
+    baby, born: G.time, sizeVar: rand(0.9, 1.1), sick: false, keeperT: 0, face: Math.random() < 0.5 ? 1 : -1, anim: 0,
     thought: null, thoughtT: 0, escaped: false, escNotified: false, breedT: 0,
   };
 }
@@ -389,8 +390,8 @@ function bulldoze(x, y) {
     return true;
   }
   let removed = false;
-  for (const i of [hIdx(x, y), hIdx(x, y + 1)]) if (G.hF[i]) { G.hF[i] = 0; removed = true; }
-  for (const i of [vIdx(x, y), vIdx(x + 1, y)]) if (G.vF[i]) { G.vF[i] = 0; removed = true; }
+  for (const i of [hIdx(x, y), hIdx(x, y + 1)]) if (G.hF[i]) { G.hF[i] = 0; G.hC[i] = 0; removed = true; }
+  for (const i of [vIdx(x, y), vIdx(x + 1, y)]) if (G.vF[i]) { G.vF[i] = 0; G.vC[i] = 0; removed = true; }
   if (removed) { computeExhibits(); Sound.play('demolish'); }
   return removed;
 }
@@ -404,6 +405,42 @@ function hireStaff(role) {
   });
   notify(`You hired a new ${STAFF_TYPES[role].name}.`, 'good');
   Sound.play('hire');
+}
+
+// ---------- undo ----------
+// A snapshot of everything the build tools can change, taken when a stroke starts.
+function beginUndo() {
+  if (!G.undo) G.undo = [];
+  G.pendingUndo = {
+    tiles: G.tiles.map(t => ({ t: t.t, path: t.path, obj: t.obj })),
+    hF: G.hF.slice(), vF: G.vF.slice(), hC: G.hC.slice(), vC: G.vC.slice(),
+    objects: new Map([...G.objects].map(([k, o]) => [k, { ...o }])),
+    animalIds: new Set(G.animals.map(a => a.id)), money: G.money, nextId: G.nextId,
+  };
+}
+function endUndo() {
+  const snap = G.pendingUndo;
+  G.pendingUndo = null;
+  if (!snap) return;
+  snap.cost = snap.money - G.money;
+  if (snap.cost === 0) return;
+  G.undo.push(snap);
+  if (G.undo.length > 15) G.undo.shift();
+}
+function undo() {
+  const snap = G.undo && G.undo.pop();
+  if (!snap) { notify('Nothing to undo.', 'info'); return; }
+  snap.tiles.forEach((t, i) => Object.assign(G.tiles[i], t));
+  G.hF = snap.hF; G.vF = snap.vF; G.hC = snap.hC; G.vC = snap.vC;
+  G.objects = snap.objects;
+  // animals adopted during the stroke are given back
+  G.animals = G.animals.filter(a => snap.animalIds.has(a.id) || a.id < snap.nextId || a.baby);
+  G.money += snap.cost;
+  for (const k of ['construction', 'animals']) G.month[k] = Math.max(0, G.month[k] - Math.max(0, snap.cost));
+  computeExhibits();
+  terrainDirty = true;
+  notify(`Undone. ${snap.cost > 0 ? money(snap.cost) + ' refunded.' : ''}`, 'info');
+  Sound.play('demolish');
 }
 
 // ---------- messages & floating text ----------
@@ -425,7 +462,8 @@ function saveGame() {
     scenarioId: G.scenarioId, scnState: G.scnState, goalsDone: G.goalsDone, births: G.births,
     tiles: G.tiles.map(t => TERRAIN_ORDER.indexOf(t.t) + (t.path ? 16 : 0)),
     hF: Array.from(G.hF), vF: Array.from(G.vF),
-    objects: [...G.objects.values()].map(o => [o.type, o.x, o.y, +o.v.toFixed(3)]),
+    objects: [...G.objects.values()].map(o => [o.type, o.x, o.y, +o.v.toFixed(3), o.price != null ? o.price : null]),
+    hC: Array.from(G.hC, v => Math.round(v)), vC: Array.from(G.vC, v => Math.round(v)),
     animals: G.animals.map(a => ({ ...a, path: [], state: 'idle', timer: 1 })),
     staff: G.staff.map(s => ({ ...s, path: [], state: 'idle', timer: 1, task: null })),
     food: G.food, dung: G.dung, litter: G.litter,
@@ -451,12 +489,20 @@ function loadGame() {
     money: data.money, time: data.time, admission: data.admission, rating: data.rating, nextId: data.nextId,
     monthIndex: data.monthIndex, totalGuests: data.totalGuests, month: data.month, lastMonth: data.lastMonth,
     hF: Uint8Array.from(data.hF), vF: Uint8Array.from(data.vF),
+    hC: data.hC ? Float32Array.from(data.hC) : Float32Array.from(data.hF, f => f ? 100 : 0),
+    vC: data.vC ? Float32Array.from(data.vC) : Float32Array.from(data.vF, f => f ? 100 : 0),
     animals: data.animals, staff: data.staff, food: data.food, dung: data.dung, litter: data.litter,
     guests: [], objects: new Map(), messages: [],
     scenarioId: data.scenarioId || null, scnState: data.scnState || null, goalsDone: data.goalsDone || [], births: data.births || {},
   });
   G.tiles.forEach((t, i) => { const v = data.tiles[i]; t.t = TERRAIN_ORDER[v & 15]; t.path = v >= 16; t.obj = 0; });
-  for (const [type, x, y, v] of data.objects) { const o = addObject(type, x, y); o.v = v; }
+  for (const [type, x, y, v, price] of data.objects) {
+    if (!OBJECTS[type]) continue;
+    const o = addObject(type, x, y);
+    o.v = v;
+    if (price != null) o.price = price;
+  }
+  G.undo = [];
   G.litterCount.fill(0);
   for (const l of G.litter) G.litterCount[idx(Math.floor(l.x), Math.floor(l.y))]++;
   computeExhibits();

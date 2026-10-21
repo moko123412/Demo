@@ -51,6 +51,17 @@
 
     <aside id="info" class="panel" hidden></aside>
     <div id="messages" aria-live="polite"></div>
+    <div id="cursor-tip" hidden></div>
+    <div id="mapbox">
+      <div class="mapbtns">
+        <button id="btn-undo" title="Undo last build (Ctrl+Z)">↶</button>
+        <button id="btn-zoomin" title="Zoom in (+)">＋</button>
+        <button id="btn-zoomout" title="Zoom out (−)">－</button>
+        <button id="btn-home" title="Go to entrance (Home)">⌂</button>
+        <button id="btn-map" title="Show/hide minimap (M)">🗺️</button>
+      </div>
+      <canvas id="minimap" title="Click to jump there"></canvas>
+    </div>
 
     <section id="status" class="panel dialog" hidden>
       <div class="head"><h2>Zoo Status</h2><button class="close" aria-label="Close">×</button></div>
@@ -68,7 +79,7 @@
         <li><b>🍔 Guests</b>: add food, drinks, restrooms, benches and trash cans along the paths.</li>
         <li>Click an animal, guest or exhibit to see what they think. Happy animals bring happy guests, and happy guests bring money.</li>
       </ol>
-      <p class="dim">Drag to scroll (or right-drag / WASD). Wheel or pinch to zoom. Space pauses. G toggles the grid.</p>
+      <p class="dim">Drag, WASD or push the mouse to the screen edge to scroll. Wheel, pinch or ＋/－ to zoom. Right-click or Esc cancels a tool, Ctrl+Z undoes. Tool keys: Q select, T terrain, P paths, F fences, N animals, L plants, E exhibit items, B food, R rides, V decor, H staff, X bulldoze, M minimap. Space pauses, G shows the grid.</p>
       <div class="actions">
         <button class="scenarios primary">🎯 Scenarios</button>
         <button class="start">🌳 Freeform zoo</button>

@@ -9,7 +9,9 @@ const CATEGORIES = [
   { id: 'animal',   icon: '🦁', label: 'Animals' },
   { id: 'plants',   icon: '🌳', label: 'Plants' },
   { id: 'exhibit',  icon: '🪨', label: 'Exhibit' },
-  { id: 'guest',    icon: '🍔', label: 'Guests' },
+  { id: 'guest',    icon: '🍔', label: 'Food' },
+  { id: 'rides',    icon: '🎡', label: 'Rides' },
+  { id: 'decor',    icon: '🌷', label: 'Decor' },
   { id: 'staff',    icon: '🧢', label: 'Staff' },
   { id: 'bulldoze', icon: '🚜', label: 'Bulldoze' },
 ];
@@ -41,10 +43,12 @@ function paletteItems(cat) {
     case 'animal': return Object.keys(SPECIES).filter(k => speciesAllowed(k)).map(k => ({ kind: 'animal', key: k, name: SPECIES[k].name, cost: SPECIES[k].cost, desc: speciesBlurb(k) }));
     case 'plants': return objs(o => o.cat === 'foliage');
     case 'exhibit': return objs(o => o.cat === 'rock' || o.cat === 'shelter' || o.cat === 'toy');
-    case 'guest': return objs(o => o.cat === 'building' || o.cat === 'scenery');
+    case 'guest': return objs(o => o.cat === 'building');
+    case 'rides': return objs(o => o.cat === 'ride');
+    case 'decor': return objs(o => o.cat === 'scenery');
     case 'staff': return Object.keys(STAFF_TYPES).map(k => ({
       kind: 'staff', key: k, name: 'Hire ' + STAFF_TYPES[k].name, cost: STAFF_TYPES[k].hire,
-      desc: k === 'keeper' ? `Feeds animals, cleans exhibits and treats sick animals. Salary ${money(STAFF_TYPES[k].salary)}/month.` : `Sweeps up litter on paths. Salary ${money(STAFF_TYPES[k].salary)}/month.`,
+      desc: k === 'keeper' ? `Feeds animals, cleans exhibits, treats sick animals and recaptures escapees. Salary ${money(STAFF_TYPES[k].salary)}/month.` : `Sweeps litter and repairs worn fences. Salary ${money(STAFF_TYPES[k].salary)}/month.`,
     }));
   }
   return [];
@@ -54,12 +58,20 @@ function objectBlurb(k) {
   const o = OBJECTS[k];
   const fans = Object.keys(SPECIES).filter(s => SPECIES[s].foliage.includes(k) || SPECIES[s].rock === k || SPECIES[s].shelter === k);
   const who = fans.length ? ` Loved by ${fans.map(s => SPECIES[s].plural.toLowerCase()).join(', ')}.` : '';
-  if (o.cat === 'building') {
-    if (o.sells) return `Sells ${o.sells === 'food' ? 'food' : o.sells === 'drink' ? 'drinks' : 'treats'} for ${money(o.price)}. Place next to a path.`;
-    if (k === 'restroom') return 'Guests need restrooms! Place next to a path.';
-    if (k === 'bench') return 'Tired guests rest here. Place next to a path.';
-    return 'Guests throw their wrappers away here instead of littering. Place next to a path.';
+  const up = o.upkeep ? ` Upkeep ${money(o.upkeep)}/month.` : '';
+  if (o.use) {
+    const u = o.use, what = {
+      hunger: 'Feeds hungry guests', thirst: 'Quenches thirsty guests', bladder: 'Guests need restrooms!',
+      energy: 'Tired guests rest here', fun: 'Bored guests come here for fun', souvenir: 'Happy guests buy souvenirs on their way out',
+      map: 'Sells park maps that help guests find exhibits and facilities',
+    }[u.need];
+    const cap = u.capacity ? ` Holds ${u.capacity} riders.` : '';
+    const kids = o.kids ? ' Children only.' : '';
+    return `${what}. ${u.price ? `Default price ${money(u.price)}.` : 'Free to use.'}${cap}${kids}${up} Place next to a path.`;
   }
+  if (k === 'trash') return 'Guests throw their wrappers away here instead of littering. Place next to a path.';
+  if (k === 'donation') return 'Guests donate much more at exhibits near a donation box. Place next to a path.';
+  if (o.light) return 'Lights up the paths at night and looks lovely. Place next to a path.';
   if (o.cat === 'scenery') return 'Pretty decoration that cheers up guests walking past. Place next to a path.';
   if (o.cat === 'toy') return 'Animals with toys are a little happier and more playful.';
   if (o.cat === 'shelter') return 'A place for animals to rest.' + who;
@@ -68,7 +80,7 @@ function objectBlurb(k) {
 
 const UI = {
   tool: { mode: 'select', key: null, brush: 2 },
-  cat: 'select', sel: null, hover: null, dragStart: null, showGrid: false,
+  cat: 'select', sel: null, hover: null, follow: null, tip: '', tipBad: false, dragStart: null, showGrid: false,
   messagesDirty: true, infoT: 0, topT: 0, lastInfo: '', previewCost: 0,
 
   init() {
@@ -78,6 +90,8 @@ const UI = {
       b.className = 'tool';
       b.dataset.cat = c.id;
       b.innerHTML = `<span class="ico">${c.icon}</span><span class="lbl">${c.label}</span>`;
+      const keyFor = { select: 'Q', terrain: 'T', path: 'P', fence: 'F', animal: 'N', plants: 'L', exhibit: 'E', guest: 'B', rides: 'R', decor: 'V', staff: 'H', bulldoze: 'X' };
+      b.title = `${c.label} (${keyFor[c.id]})`;
       b.addEventListener('click', () => this.setCategory(this.cat === c.id && c.id !== 'select' ? 'select' : c.id));
       bar.appendChild(b);
     }
@@ -253,19 +267,25 @@ const UI = {
       h += `<div class="sect">Exhibit suitability <b>${pct(ev.total * 100)}</b></div>`;
       h += ev.issues.length ? '<ul class="issues">' + ev.issues.slice(0, 5).map(i => `<li>${i}</li>`).join('') + '</ul>' : `<p class="good">The ${sp.plural.toLowerCase()} love their exhibit!</p>`;
       h += `<button data-act="exhibit" data-key="${ex.key}">View exhibit</button> `;
+      h += this.followBtn(a.id);
     } else h += '<p class="bad">This animal is outside an exhibit!</p>';
     h += `<p class="dim">In your zoo for ${days} day${days === 1 ? '' : 's'}.</p>`;
     h += `<button data-act="sell" data-id="${a.id}">Sell for ${money(sp.cost * 0.5)}</button>`;
     return h;
   },
 
+  followBtn(id) { return `<button data-act="follow" data-id="${id}">${this.follow === id ? '🎥 Stop following' : '🎥 Follow'}</button> `; },
+
   guestInfo(g) {
     if (!g) return '';
     let h = `<h3>${g.name}</h3><div class="sub">${g.kid ? 'Child' : 'Adult'} guest · ${money(g.cash)} in pocket</div>`;
     h += this.bar('Happiness', g.happy) + this.bar('Hunger', 100 - g.hunger, true) + this.bar('Thirst', 100 - g.thirst, true) +
-      this.bar('Energy', g.energy) + this.bar('Restroom', 100 - g.bladder, true);
+      this.bar('Energy', g.energy) + this.bar('Restroom', 100 - g.bladder, true) + this.bar('Fun', g.fun);
+    const extras = [g.map && '🗺️ has a park map', g.souvenir && `🎁 bought a ${g.souvenir === 'plush' ? 'plush toy' : g.souvenir === 'hat' ? 'safari hat' : 'balloon'}`, g.state === 'ride' && '🎡 on a ride'].filter(Boolean);
+    if (extras.length) h += `<p>${extras.join(' · ')}</p>`;
     if (g.fav) h += `<p>Favourite animal: <b>${SPECIES[g.fav].name}</b></p>`;
     h += `<p class="dim">Exhibits seen: ${g.seen.length}</p>`;
+    h += this.followBtn(g.id);
     h += '<div class="sect">Thoughts</div><ul class="thoughts">' + (g.thoughts.map(t => `<li>“${t}”</li>`).join('') || '<li class="dim">…</li>') + '</ul>';
     return h;
   },
@@ -273,8 +293,11 @@ const UI = {
   staffInfo(s) {
     if (!s) return '';
     const T = STAFF_TYPES[s.role];
-    const ex = s.task != null ? exhibitByKey(s.task) : null;
-    const doing = ex ? `Heading to the ${exhibitName(ex)}` : s.state === 'work' ? 'Working' : 'Patrolling the paths';
+    const t = s.task || '';
+    const ex = t.startsWith('ex:') ? exhibitByKey(+t.slice(3)) : null;
+    const cap = t.startsWith('cap:') ? G.animals.find(a => a.id === +t.slice(4)) : null;
+    const doing = ex ? `Heading to the ${exhibitName(ex)}` : cap ? `Chasing ${cap.name} the escaped ${SPECIES[cap.sp].name.toLowerCase()}!` :
+      t.startsWith('fence') ? 'Repairing a worn fence' : t === 'litter' ? 'Sweeping up litter' : 'Patrolling the paths';
     let h = `<h3>${s.name}</h3><div class="sub">${T.name} · ${money(T.salary)}/month</div>`;
     h += `<div class="doing">${doing}</div><p>Jobs done: <b>${s.done}</b></p>`;
     h += `<button data-act="fire" data-id="${s.id}">Fire</button>`;
@@ -309,7 +332,15 @@ const UI = {
     if (!o) return '';
     const def = OBJECTS[o.type];
     let h = `<h3>${def.name}</h3><div class="sub">${objectBlurb(o.type)}</div>`;
-    if (def.price) h += `<p>Sales: <b>${money(o.sales || 0)}</b></p>`;
+    if (def.use && (def.use.price || o.price)) {
+      const p = priceOf(o), fair = def.use.price;
+      const verdict = p > fair * 1.6 ? '<span class="bad">Guests think this is a rip-off</span>' : p > fair * 1.2 ? '<span class="warn">A bit pricey</span>' : p < fair ? '<span class="good">A bargain</span>' : '<span class="good">Fair price</span>';
+      h += `<div class="price-row">Price <button data-act="price" data-id="${o.id}" data-d="-0.5">−</button><b>${money(p)}</b><button data-act="price" data-id="${o.id}" data-d="0.5">+</button> ${verdict}</div>`;
+    }
+    if (def.use) h += `<p>Used <b>${o.uses || 0}</b> times · earned <b>${money(o.sales || 0)}</b> in total, <b>${money(o.monthSales || 0)}</b> this month.</p>`;
+    if (def.cat === 'ride') h += `<p>Riders now: <b>${o.riders || 0}</b> / ${def.use.capacity}</p>`;
+    if (o.type === 'donation') h += `<p>Donations collected: <b>${money(o.sales || 0)}</b></p>`;
+    if (def.upkeep) h += `<p class="dim">Upkeep ${money(def.upkeep)} per month.</p>`;
     h += `<button data-act="remove" data-id="${o.id}">Remove (refund ${money(def.cost * 0.5)})</button>`;
     return h;
   },
@@ -342,6 +373,16 @@ const UI = {
         this.select(null);
         break;
       }
+      case 'price': {
+        const o = G.objects.get(id);
+        if (o) { o.price = clamp(Math.round((priceOf(o) + +b.dataset.d) * 2) / 2, 0, 50); this.lastInfo = ''; this.refreshInfo(); }
+        break;
+      }
+      case 'follow':
+        this.follow = this.follow === id ? null : id;
+        this.lastInfo = '';
+        this.refreshInfo();
+        break;
       case 'remove': {
         const o = G.objects.get(id);
         if (o) bulldoze(o.x, o.y);
@@ -361,7 +402,7 @@ const UI = {
     const r = G.ratingParts || { animalAvg: 0, guestAvg: 0, variety: 0, clean: 1 };
     const fin = (m, title) => {
       if (!m) return `<div class="fin"><h4>${title}</h4><p class="dim">No report yet.</p></div>`;
-      const inc = m.admissions + m.sales + m.donations, exp = m.construction + m.animals + m.salaries;
+      const inc = m.admissions + m.sales + m.donations, exp = m.construction + m.animals + m.salaries + (m.upkeep || 0);
       return `<div class="fin"><h4>${title}</h4><table>
         <tr><td>Admissions</td><td>${money(m.admissions)}</td></tr>
         <tr><td>Concessions</td><td>${money(m.sales)}</td></tr>
@@ -369,6 +410,7 @@ const UI = {
         <tr><td>Construction</td><td>-${money(m.construction)}</td></tr>
         <tr><td>Animals</td><td>-${money(m.animals)}</td></tr>
         <tr><td>Salaries</td><td>-${money(m.salaries)}</td></tr>
+        <tr><td>Upkeep</td><td>-${money(m.upkeep || 0)}</td></tr>
         <tr class="tot"><td>Profit</td><td class="${inc - exp >= 0 ? 'good' : 'bad'}">${money(inc - exp)}</td></tr>
         <tr><td>Guests</td><td>${m.guests}</td></tr></table></div>`;
     };

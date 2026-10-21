@@ -47,6 +47,21 @@ const Sound = {
     this.noiseBuf = ctx.createBuffer(1, ctx.sampleRate * 2, ctx.sampleRate);
     const d = this.noiseBuf.getChannelData(0);
     for (let i = 0; i < d.length; i++) d[i] = Math.random() * 2 - 1;
+    // shared reverb so everything sits in the same outdoor space
+    const len = ctx.sampleRate * 2.2, ir = ctx.createBuffer(2, len, ctx.sampleRate);
+    for (let ch = 0; ch < 2; ch++) {
+      const data = ir.getChannelData(ch);
+      for (let i = 0; i < len; i++) data[i] = (Math.random() * 2 - 1) * Math.pow(1 - i / len, 3.2) * (i < ctx.sampleRate * 0.02 ? i / (ctx.sampleRate * 0.02) : 1);
+    }
+    this.reverb = ctx.createConvolver();
+    this.reverb.buffer = ir;
+    const wet = ctx.createGain();
+    wet.gain.value = 0.5;
+    this.reverb.connect(wet).connect(this.out);
+    const send = (bus, amt) => { const g = ctx.createGain(); g.gain.value = amt; bus.connect(g).connect(this.reverb); };
+    send(this.sfxBus, 0.22);
+    send(this.ambBus, 0.18);
+    send(this.musicBus, 0.25);
     this.applyVolumes();
     this.startAmbience();
     this.music.next = ctx.currentTime + 0.6;
@@ -131,26 +146,63 @@ const Sound = {
     return g;
   },
 
+  // A buzzy source shaped by vocal-tract formants, with a rough tremolo:
+  // much closer to a real throat than a bare oscillator.
+  voice(t, dur, vol, dest, o) {
+    const ctx = this.ctx, src = ctx.createOscillator(), amp = ctx.createGain(), out = ctx.createGain();
+    src.type = 'sawtooth';
+    src.frequency.setValueAtTime(o.f0, t);
+    if (o.peak) src.frequency.linearRampToValueAtTime(o.peak, t + dur * (o.peakAt || 0.3));
+    src.frequency.exponentialRampToValueAtTime(o.f1 || o.f0 * 0.7, t + dur);
+    if (o.rough) {
+      const lfo = ctx.createOscillator(), lg = ctx.createGain();
+      lfo.frequency.value = o.rough[0];
+      lg.gain.value = o.rough[1];
+      lfo.connect(lg).connect(amp.gain);
+      lfo.start(t); lfo.stop(t + dur + 0.05);
+    }
+    amp.gain.value = 0.6;
+    src.connect(amp);
+    for (const [f, q, g] of o.formants) {
+      const bp = ctx.createBiquadFilter(), fg = ctx.createGain();
+      bp.type = 'bandpass';
+      bp.frequency.setValueAtTime(f, t);
+      if (o.shift) bp.frequency.linearRampToValueAtTime(f * o.shift, t + dur);
+      bp.Q.value = q;
+      fg.gain.value = g;
+      amp.connect(bp).connect(fg).connect(out);
+    }
+    out.gain.setValueAtTime(0.0001, t);
+    out.gain.exponentialRampToValueAtTime(vol, t + (o.attack || 0.06));
+    out.gain.setTargetAtTime(vol * 0.7, t + dur * 0.4, dur * 0.2);
+    out.gain.exponentialRampToValueAtTime(0.0001, t + dur);
+    out.connect(dest || this.sfxBus);
+    src.start(t);
+    src.stop(t + dur + 0.05);
+  },
+
   // ---------- animal calls ----------
   calls: {
     roar(S, t, d, deep = 1) {
-      S.osc('sawtooth', 120 * deep, t, 1.4, 0.32, d, { f1: 70 * deep, attack: 0.18, filter: ['lowpass', 1000, 2, 280], vib: [16, 10] });
-      S.noise(t, 1.3, 0.22, d, ['bandpass', 520 * deep, 0.8, 250], 0.15);
+      S.voice(t, 1.6, 0.9, d, { f0: 95 * deep, peak: 150 * deep, peakAt: 0.25, f1: 60 * deep, rough: [28, 0.5], attack: 0.15, formants: [[420 * deep, 4, 1.2], [900 * deep, 5, 0.6], [2200, 6, 0.2]], shift: 0.7 });
+      S.noise(t, 1.4, 0.18, d, ['bandpass', 700 * deep, 0.9, 300], 0.12);
+      S.osc('sine', 48 * deep, t, 1.4, 0.35, d, { f1: 38, attack: 0.2 });
     },
     growl(S, t, d) {
-      S.osc('sawtooth', 85, t, 0.9, 0.3, d, { f1: 65, attack: 0.1, filter: ['lowpass', 600, 3], vib: [22, 8] });
-      S.noise(t, 0.8, 0.15, d, ['lowpass', 500, 1], 0.1);
+      S.voice(t, 1.0, 0.8, d, { f0: 70, f1: 58, rough: [34, 0.6], attack: 0.1, formants: [[350, 4, 1.2], [800, 5, 0.5]] });
+      S.noise(t, 0.9, 0.12, d, ['lowpass', 500, 1], 0.1);
     },
     chirp(S, t, d) { for (let k = 0; k < 3; k++) S.osc('sine', 1700, t + k * 0.16, 0.11, 0.14, d, { f1: 2500 }); },
     trumpet(S, t, d) {
-      S.osc('sawtooth', 380, t, 1.1, 0.2, d, { f1: 640, glide: 0.25, attack: 0.05, vib: [7, 20], filter: ['bandpass', 1200, 1.2] });
-      S.osc('square', 760, t, 1.0, 0.05, d, { f1: 1280, glide: 0.25, attack: 0.05, filter: ['bandpass', 1900, 2] });
+      S.voice(t, 1.2, 0.55, d, { f0: 330, peak: 620, peakAt: 0.2, f1: 480, rough: [11, 0.3], attack: 0.04, formants: [[900, 3, 1], [1800, 4, 0.8], [3200, 5, 0.4]] });
+      S.noise(t, 1.0, 0.1, d, ['highpass', 2500, 1], 0.05);
+      S.osc('sawtooth', 165, t + 0.05, 1.0, 0.06, d, { f1: 240, glide: 0.25, filter: ['lowpass', 900, 1] });
     },
     hum(S, t, d) { S.osc('sine', 72, t, 1.1, 0.28, d, { f1: 56, attack: 0.25 }); },
     bray(S, t, d) {
-      for (let k = 0; k < 2; k++) {
-        S.osc('sawtooth', 720, t + k * 0.46, 0.22, 0.13, d, { f1: 520, filter: ['bandpass', 1400, 1.5] });
-        S.osc('sawtooth', 300, t + k * 0.46 + 0.22, 0.24, 0.15, d, { f1: 240, filter: ['bandpass', 700, 1.5] });
+      for (let k = 0; k < 3; k++) {
+        S.voice(t + k * 0.42, 0.22, 0.4, d, { f0: 640, f1: 520, rough: [40, 0.4], attack: 0.02, formants: [[1100, 5, 1], [2400, 6, 0.5]] });
+        S.voice(t + k * 0.42 + 0.2, 0.22, 0.45, d, { f0: 260, f1: 210, rough: [30, 0.5], attack: 0.02, formants: [[600, 5, 1], [1300, 6, 0.4]] });
       }
     },
     chest(S, t, d) {
@@ -159,18 +211,20 @@ const Sound = {
         S.noise(t + k * 0.12, 0.06, 0.12, d, ['lowpass', 400, 1]);
       }
     },
-    squawk(S, t, d) { for (let k = 0; k < 3; k++) S.osc('square', 820, t + k * 0.15, 0.11, 0.08, d, { f1: 600, filter: ['bandpass', 1300, 2] }); },
+    squawk(S, t, d) {
+      for (let k = 0; k < 4; k++) S.voice(t + k * 0.14, 0.12, 0.35, d, { f0: 560 + (k % 2) * 90, f1: 420, rough: [55, 0.6], attack: 0.01, formants: [[1300, 5, 1], [2600, 6, 0.4]] });
+    },
     honkHigh(S, t, d) { for (let k = 0; k < 2; k++) S.osc('sawtooth', 520, t + k * 0.22, 0.16, 0.1, d, { f1: 440, filter: ['bandpass', 1000, 2.5] }); },
     snort(S, t, d) {
       S.noise(t, 0.3, 0.35, d, ['bandpass', 380, 1.4]);
       S.noise(t + 0.38, 0.25, 0.25, d, ['bandpass', 320, 1.4]);
     },
     honk(S, t, d) {
-      for (let k = 0; k < 3; k++) S.osc('sawtooth', 140 - k * 12, t + k * 0.28, 0.3, 0.26, d, { f1: 95, attack: 0.04, filter: ['lowpass', 650, 3] });
+      for (let k = 0; k < 4; k++) S.voice(t + k * 0.26, 0.28, 0.7, d, { f0: 120 - k * 10, f1: 85, rough: [22, 0.5], attack: 0.03, formants: [[380, 4, 1.2], [750, 5, 0.5]] });
     },
-    bleat(S, t, d) { S.osc('triangle', 540, t, 0.5, 0.16, d, { f1: 440, vib: [9, 25], filter: ['lowpass', 2000, 1] }); },
+    bleat(S, t, d) { S.voice(t, 0.55, 0.35, d, { f0: 480, f1: 400, rough: [9, 0.5], attack: 0.04, formants: [[800, 5, 1], [1700, 6, 0.5]] }); },
     boing(S, t, d) { S.osc('sine', 170, t, 0.3, 0.25, d, { f1: 640, glide: 0.22 }); },
-    groan(S, t, d) { S.osc('sawtooth', 155, t, 0.95, 0.2, d, { f1: 105, vib: [5, 10], filter: ['lowpass', 700, 2], attack: 0.12 }); },
+    groan(S, t, d) { S.voice(t, 1.1, 0.55, d, { f0: 140, peak: 170, f1: 95, rough: [18, 0.6], attack: 0.12, formants: [[500, 4, 1], [1100, 5, 0.5]], shift: 0.8 }); },
   },
 
   animal(a, vol = 1) {
@@ -265,6 +319,56 @@ const Sound = {
     this.wind = this.loopNoise('lowpass', 320, 0.5, this.ambBus);
     this.wind.gain.value = 0.045;
     this.crowd = this.loopNoise('bandpass', 750, 0.7, this.ambBus);
+    this.water = this.loopNoise('bandpass', 420, 0.6, this.ambBus);
+    this.chatT = 1; this.organT = 0; this.critterT = 2; this.organStep = 0;
+  },
+
+  // A few syllables of babble or a child's giggle from somewhere in the crowd.
+  chatter(g) {
+    const d = this.spot(g.x, g.y, 0.5, this.ambBus);
+    if (!d) return;
+    const t = this.ctx.currentTime, kid = g.kid, laugh = kid && Math.random() < 0.5;
+    const n = laugh ? randi(3, 5) : randi(2, 4), base = kid ? 380 : rand(150, 230);
+    for (let k = 0; k < n; k++) {
+      const f = base * rand(0.9, 1.25), at = t + k * (laugh ? 0.13 : rand(0.1, 0.18));
+      const vowel = pick([[800, 1200], [400, 2000], [600, 1000], [300, 2300]]);
+      this.voice(at, laugh ? 0.1 : rand(0.08, 0.15), 0.12, d, { f0: f, f1: f * (laugh ? 0.85 : rand(0.8, 1.1)), attack: 0.01, formants: [[vowel[0], 6, 1], [vowel[1], 8, 0.5]] });
+      if (laugh) this.noise(at, 0.06, 0.03, d, ['bandpass', 3000, 2]);
+    }
+  },
+
+  // Band-organ waltz near a running carousel.
+  organ(o) {
+    const d = this.spot(o.x + 0.5, o.y + 0.5, 0.45, this.ambBus);
+    if (!d) return;
+    const t = this.ctx.currentTime, tune = [72, 76, 79, 76, 74, 77, 81, 77, 72, 76, 79, 84, 83, 79, 74, 71];
+    const n = tune[this.organStep % tune.length];
+    const f = 440 * Math.pow(2, (n - 69) / 12);
+    this.osc('square', f, t, 0.24, 0.05, d, { filter: ['lowpass', 2500, 1] });
+    this.osc('triangle', f * 2, t, 0.2, 0.03, d);
+    if (this.organStep % 3 === 0) this.osc('triangle', f / 4, t, 0.3, 0.08, d);
+    this.organStep++;
+  },
+
+  whee(o) {
+    const d = this.spot(o.x + 0.5, o.y + 0.5, 0.45, this.ambBus);
+    if (!d) return;
+    const t = this.ctx.currentTime;
+    this.voice(t, 0.7, 0.18, d, { f0: 520, peak: 900, peakAt: 0.4, f1: 600, attack: 0.05, formants: [[400, 5, 1], [2300, 8, 0.6]] });
+  },
+
+  cricket() {
+    const t = this.ctx.currentTime;
+    let d = this.ambBus;
+    if (this.ctx.createStereoPanner) { const p = this.ctx.createStereoPanner(); p.pan.value = rand(-0.9, 0.9); p.connect(this.ambBus); d = p; }
+    const f = rand(4200, 4800);
+    for (let k = 0; k < 3; k++) for (let j = 0; j < 4; j++) this.osc('sine', f, t + k * 0.35 + j * 0.035, 0.025, 0.02, d);
+  },
+
+  owl() {
+    const t = this.ctx.currentTime;
+    this.osc('sine', 380, t, 0.35, 0.04, this.ambBus, { f1: 340, attack: 0.05 });
+    this.osc('sine', 360, t + 0.5, 0.6, 0.04, this.ambBus, { f1: 320, attack: 0.05 });
   },
 
   bird() {
@@ -294,10 +398,31 @@ const Sound = {
     }
     const level = Math.min(0.16, visible * 0.004) * (0.4 + 0.6 * Math.min(1, cam.zoom)) * (G.speed ? 1 : 0.4);
     this.crowd.gain.setTargetAtTime(level, t, 0.6);
+    const dark = darkness();
+    // water lapping when ponds are in view
+    let wet = 0;
+    const c0 = screenToTile(viewW / 2, viewH / 2), cx = Math.floor(c0.x), cy = Math.floor(c0.y);
+    for (let y = cy - 8; y <= cy + 8; y += 2) for (let x = cx - 8; x <= cx + 8; x += 2) { const tl = tileAt(x, y); if (tl && tl.t === 'water') wet++; }
+    this.water.gain.setTargetAtTime(Math.min(0.06, wet * 0.004) * (0.5 + 0.5 * Math.sin(t * 0.7)), t, 0.4);
     this.birdT -= dt;
     if (this.birdT <= 0) {
-      this.birdT = rand(2, 7);
-      if (!this.muted) this.bird();
+      this.birdT = dark > 0.5 ? rand(0.6, 1.6) : rand(2, 7);
+      if (this.muted) { /* nothing */ } else if (dark > 0.5) { Math.random() < 0.06 ? this.owl() : this.cricket(); } else this.bird();
+    }
+    this.chatT -= dt;
+    if (this.chatT <= 0) {
+      this.chatT = rand(0.6, 2.2) / Math.max(1, Math.sqrt(visible / 6));
+      const near = G.guests.filter(g => g.state !== 'ride' && Math.abs(isoX(g.x, g.y) - cam.x) < viewW / 2 / cam.zoom && Math.abs(isoY(g.x, g.y) - cam.y) < viewH / 2 / cam.zoom);
+      if (near.length && G.speed) this.chatter(pick(near));
+    }
+    this.organT -= dt;
+    if (this.organT <= 0) {
+      this.organT = 0.3;
+      for (const o of G.objects.values()) {
+        if (!o.riders) continue;
+        if (o.type === 'carousel') this.organ(o);
+        else if (o.type === 'swings' && Math.random() < 0.08) this.whee(o);
+      }
     }
     this.callT -= dt * G.speed;
     if (this.callT <= 0) {
@@ -327,20 +452,48 @@ const Sound = {
     }
   },
 
+  pad(chord, t, dur) {
+    for (const n of chord) {
+      const f = 440 * Math.pow(2, (60 + n - 69) / 12);
+      for (const det of [-6, 6]) {
+        const o = this.ctx.createOscillator(), g = this.ctx.createGain(), lp = this.ctx.createBiquadFilter();
+        o.type = 'sawtooth';
+        o.frequency.value = f;
+        o.detune.value = det;
+        lp.type = 'lowpass';
+        lp.frequency.value = 900;
+        g.gain.setValueAtTime(0.0001, t);
+        g.gain.linearRampToValueAtTime(0.012, t + dur * 0.3);
+        g.gain.linearRampToValueAtTime(0.0001, t + dur);
+        o.connect(lp).connect(g).connect(this.musicBus);
+        o.start(t);
+        o.stop(t + dur + 0.05);
+      }
+    }
+  },
+
   musicStep(i, t) {
-    const chords = [[0, 4, 7], [-3, 0, 4], [-7, -3, 0], [-5, -1, 2]];
-    const pos = i % 16, chord = chords[Math.floor(i / 16) % 4];
+    // A section: C Am F G, B section: F G Em Am, played A A B A
+    const A = [[0, 4, 7], [-3, 0, 4], [-7, -3, 0], [-5, -1, 2]], B = [[-7, -3, 0], [-5, -1, 2], [-8, -5, -1], [-3, 0, 4]];
+    const bar = Math.floor(i / 16), section = Math.floor(bar / 4) % 4, chords = section === 2 ? B : A;
+    const pos = i % 16, chord = chords[bar % 4], night = darkness() > 0.5;
+    const eighth = 60 / 100 / 2;
+    if (pos === 0) this.pad(chord, t, eighth * 16);
     if (pos % 4 === 0) {
       const f = 440 * Math.pow(2, (36 + chord[0] + (pos === 8 ? 7 : 0) - 69) / 12);
-      this.osc('triangle', f, t, 0.4, 0.16, this.musicBus);
+      this.osc('triangle', f, t, 0.4, 0.15, this.musicBus);
     }
-    if (pos % 2 === 1) this.noise(t, 0.04, 0.012, this.musicBus, ['highpass', 7000, 1]);
-    if (pos === 0 || pos === 6 || pos === 10) for (const n of chord) this.marimba(60 + n, t, 0.035);
-    // melody: a fixed 64-step phrase drawn from the pentatonic scale
-    const phrase = i % 64;
-    if (hash2(phrase, 11) < 0.55) {
+    if (!night) {
+      if (pos % 2 === 1) this.noise(t, 0.04, 0.012, this.musicBus, ['highpass', 7000, 1]);
+      // bongos
+      if ([0, 3, 6, 10, 11, 14].includes(pos)) this.osc('sine', pos % 3 === 0 ? 220 : 300, t, 0.12, 0.08, this.musicBus, { f1: pos % 3 === 0 ? 150 : 210 });
+      if (pos === 0 || pos === 6 || pos === 10) for (const n of chord) this.marimba(60 + n, t, 0.03);
+    }
+    // melody: a 64-step phrase from the pentatonic scale, varied in the B section
+    const phrase = (i % 64) + section * 101;
+    if (hash2(phrase, 11) < (night ? 0.3 : 0.55)) {
       const scale = [0, 2, 4, 7, 9], deg = Math.floor(hash2(phrase, 12) * 8);
-      this.marimba(72 + scale[deg % 5] + 12 * Math.floor(deg / 5), t, 0.06);
+      this.marimba(72 + scale[deg % 5] + 12 * Math.floor(deg / 5), t, night ? 0.04 : 0.06);
     }
   },
 };
