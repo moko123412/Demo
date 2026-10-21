@@ -2,25 +2,83 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Hello World</title>
-  <style>
-    body {
-      margin: 0;
-      display: flex;
-      justify-content: center;
-      align-items: center;
-      min-height: 100vh;
-      background: #f0f4f8;
-      font-family: sans-serif;
-    }
-    h1 {
-      font-size: 4rem;
-      color: #1a202c;
-    }
-  </style>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+  <title>Menagerie Zoo Builder</title>
+  <link rel="stylesheet" href="css/style.css">
 </head>
 <body>
-  <h1>Hello World</h1>
+  <header id="topbar">
+    <div class="brand">🦁 <span>Menagerie</span></div>
+    <div class="stat" title="Money">💰 <b id="st-money">$0</b></div>
+    <div class="stat" title="Guests in the zoo">👥 <b id="st-guests">0</b></div>
+    <div class="stat" title="Animals">🐾 <b id="st-animals">0</b></div>
+    <div class="stat rating" id="st-rating-wrap">⭐ <div class="bar"><i id="st-rating"></i></div></div>
+    <div class="stat date">📅 <b id="st-date"></b></div>
+    <div class="stat adm" title="Admission price">🎟️
+      <button data-adm="-1" aria-label="Lower admission">−</button><b id="st-adm">$0</b><button data-adm="1" aria-label="Raise admission">+</button>
+    </div>
+    <div class="group speed">
+      <button data-speed="0" title="Pause (Space)">⏸</button>
+      <button data-speed="1" title="Normal speed (1)" class="on">▶</button>
+      <button data-speed="2" title="Fast (2)">⏩</button>
+      <button data-speed="4" title="Fastest (3)">⏭</button>
+    </div>
+    <div class="group menu">
+      <button id="btn-status" title="Zoo status and finances">📊</button>
+      <button id="btn-save" title="Save zoo">💾</button>
+      <button id="btn-load" title="Load saved zoo">📂</button>
+      <button id="btn-new" title="New zoo">✨</button>
+      <button id="btn-help" title="How to play">❔</button>
+    </div>
+  </header>
+
+  <main id="stage">
+    <canvas id="view"></canvas>
+    <nav id="toolbar" aria-label="Build tools"></nav>
+
+    <section id="palette" class="panel" hidden>
+      <div class="head"><h2></h2><button class="close" aria-label="Close">×</button></div>
+      <div class="brush" hidden>Brush
+        <button data-brush="1">1</button><button data-brush="2" class="on">2</button><button data-brush="3">3</button><button data-brush="4">4</button>
+      </div>
+      <div class="items"></div>
+      <p class="desc"></p>
+      <div class="extra"></div>
+    </section>
+
+    <aside id="info" class="panel" hidden></aside>
+    <div id="messages" aria-live="polite"></div>
+
+    <section id="status" class="panel dialog" hidden>
+      <div class="head"><h2>Zoo Status</h2><button class="close" aria-label="Close">×</button></div>
+      <div class="body"></div>
+    </section>
+
+    <section id="welcome" class="panel dialog" hidden>
+      <h1>🦁 Menagerie</h1>
+      <p class="tag">Build the zoo you always dreamed of.</p>
+      <ol>
+        <li><b>🚧 Fences</b>: drag a rectangle next to the path to build an exhibit.</li>
+        <li><b>⛰️ Terrain</b> and <b>🌳 Plants</b>: shape the habitat. Each animal has favourites.</li>
+        <li><b>🦁 Animals</b>: adopt animals and click inside the exhibit to release them.</li>
+        <li><b>🧢 Staff</b>: hire zookeepers to feed animals and clean exhibits.</li>
+        <li><b>🍔 Guests</b>: add food, drinks, restrooms, benches and trash cans along the paths.</li>
+        <li>Click an animal, guest or exhibit to see what they think. Happy animals bring happy guests, and happy guests bring money.</li>
+      </ol>
+      <p class="dim">Drag to scroll (or right-drag / WASD). Wheel or pinch to zoom. Space pauses. G toggles the grid.</p>
+      <div class="actions">
+        <button class="start primary">Start a new zoo</button>
+        <button class="continue">Continue saved zoo</button>
+        <button class="resume">Back to my zoo</button>
+      </div>
+    </section>
+  </main>
+
+  <script src="js/data.js"></script>
+  <script src="js/world.js"></script>
+  <script src="js/sim.js"></script>
+  <script src="js/draw.js"></script>
+  <script src="js/ui.js"></script>
+  <script src="js/main.js"></script>
 </body>
 </html>
