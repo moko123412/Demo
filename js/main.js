@@ -5,6 +5,13 @@ const keys = new Set();
 const pointers = new Map();
 let pan = null, pinch = null, painting = false, lastPaint = null, strokeStart = true;
 
+let touch = null;
+function buzz() { if (navigator.vibrate) try { navigator.vibrate(12); } catch (e) { /* unsupported */ } }
+function isPaintTool() {
+  const m = UI.tool.mode;
+  return m === 'terrain' || m === 'path' || m === 'bulldoze' || (m === 'object' && ['foliage', 'rock'].includes(OBJECTS[UI.tool.key].cat));
+}
+
 function tileFromScreen(sx, sy) {
   const t = screenToTile(sx, sy);
   return { x: Math.floor(t.x), y: Math.floor(t.y) };
@@ -62,8 +69,8 @@ function applyAt(x, y) {
   strokeStart = false;
 }
 
-function clickSelect(sx, sy) {
-  let best = null, bestD = 22;
+function clickSelect(sx, sy, touchInput = false) {
+  let best = null, bestD = touchInput ? 34 : 22;
   for (const list of [G.animals, G.staff, G.guests]) {
     for (const e of list) {
       const p = tileToScreen(e.x, e.y);
@@ -86,6 +93,8 @@ function setupInput() {
     canvas.setPointerCapture(e.pointerId);
     pointers.set(e.pointerId, { x: e.offsetX, y: e.offsetY });
     if (pointers.size === 2) {
+      if (painting || UI.dragStart) endUndo();
+      touch = null;
       const [a, b] = [...pointers.values()];
       pinch = { d: Math.hypot(a.x - b.x, a.y - b.y), mx: (a.x + b.x) / 2, my: (a.y + b.y) / 2 };
       pan = null; painting = false; UI.dragStart = null;
@@ -98,6 +107,11 @@ function setupInput() {
     }
     const t = tileFromScreen(e.offsetX, e.offsetY);
     UI.hover = t;
+    if (e.pointerType === 'touch') {
+      // on touch, wait to see whether this is a tap or a drag
+      touch = { sx: e.offsetX, sy: e.offsetY, start: t, moved: false };
+      return;
+    }
     beginUndo();
     if (mode === 'fence') { UI.dragStart = t; return; }
     strokeStart = true;
@@ -127,13 +141,49 @@ function setupInput() {
       if (pan.moved) { cam.x = pan.cx - dx / cam.zoom; cam.y = pan.cy - dy / cam.zoom; clampCamera(); UI.follow = null; }
       return;
     }
+    if (touch && !touch.moved && Math.hypot(e.offsetX - touch.sx, e.offsetY - touch.sy) > 12) {
+      touch.moved = true;
+      const mode = UI.tool.mode;
+      if (isPaintTool()) {
+        beginUndo();
+        strokeStart = true;
+        lastPaint = null;
+        painting = true;
+        paintTo(touch.start);
+      } else if (mode === 'fence') {
+        beginUndo();
+        UI.fenceAnchor = null;
+        UI.dragStart = touch.start;
+      }
+    }
     if (painting && (!lastPaint || lastPaint.x !== t.x || lastPaint.y !== t.y)) paintTo(t);
   });
   const end = e => {
     pointers.delete(e.pointerId);
     if (pinch) { if (pointers.size < 2) pinch = null; pan = null; return; }
+    if (touch) {
+      const t = touch.moved ? UI.hover : touch.start, mode = UI.tool.mode;
+      if (!touch.moved && mode === 'fence') {
+        // tap one corner, then the opposite corner
+        if (UI.fenceAnchor) {
+          beginUndo();
+          placeFenceRect(UI.fenceAnchor.x, UI.fenceAnchor.y, t.x, t.y, UI.tool.key);
+          endUndo();
+          UI.fenceAnchor = null;
+        } else UI.fenceAnchor = t;
+        buzz();
+      } else if (!touch.moved || (!painting && mode !== 'fence')) {
+        // a tap, or a drag that was only positioning the preview
+        beginUndo();
+        strokeStart = true;
+        lastPaint = null;
+        if (inMap(t.x, t.y)) { applyAt(t.x, t.y); buzz(); }
+        endUndo();
+      }
+      touch = null;
+    }
     if (pan) {
-      if (!pan.moved && pan.button === 0) clickSelect(e.offsetX, e.offsetY);
+      if (!pan.moved && pan.button === 0) clickSelect(e.offsetX, e.offsetY, e.pointerType === 'touch');
       // a right-click without dragging cancels the current tool
       if (!pan.moved && pan.button === 2 && UI.tool.mode !== 'select') UI.setCategory('select');
       pan = null;
@@ -149,7 +199,7 @@ function setupInput() {
   };
   canvas.addEventListener('pointerup', end);
   canvas.addEventListener('pointercancel', end);
-  canvas.addEventListener('pointerleave', () => { if (!pointers.size) UI.hover = null; mouse.inside = false; });
+  canvas.addEventListener('pointerleave', e => { if (!pointers.size && e.pointerType !== 'touch') UI.hover = null; mouse.inside = false; });
   canvas.addEventListener('wheel', e => {
     e.preventDefault();
     zoomAt(e.offsetX, e.offsetY, Math.exp(-e.deltaY * 0.0015));
@@ -266,6 +316,7 @@ window.addEventListener('DOMContentLoaded', () => {
   UI.init();
   setupInput();
   minimapTick = setupMinimap();
+  if (window.innerWidth < 720) $('#minimap').classList.add('off');
   $('#btn-undo').addEventListener('click', () => undo());
   $('#btn-zoomin').addEventListener('click', () => zoomAt(viewW / 2, viewH / 2, 1.25));
   $('#btn-zoomout').addEventListener('click', () => zoomAt(viewW / 2, viewH / 2, 0.8));

@@ -301,3 +301,67 @@ button.primary { background: linear-gradient(#6fb04f, #3d7a2b); color: #fff; bor
   #mapbox { bottom: 80px; }
   #minimap { width: 150px; height: 76px; }
 }
+
+/* ---------- touch & phones ---------- */
+#btn-more { display: none; }
+#touch-hint {
+  position: absolute;
+  left: 50%; top: 8px;
+  transform: translateX(-50%);
+  display: flex; align-items: center; gap: 8px;
+  background: rgba(40, 30, 15, 0.92);
+  color: #fff6dc;
+  border: 2px solid #d9c27a;
+  border-radius: 12px;
+  padding: 6px 8px 6px 12px;
+  box-shadow: var(--shadow);
+  z-index: 6;
+  max-width: calc(100% - 16px);
+}
+#touch-hint .txt { display: flex; flex-direction: column; font-size: 12.5px; line-height: 1.25; min-width: 0; }
+#touch-hint .txt b { font-size: 14px; }
+#touch-hint button { padding: 8px 12px; font-size: 15px; flex: none; }
+
+@media (pointer: coarse) {
+  #toolbar .tool { min-height: 52px; }
+  #palette .item { min-height: 96px; }
+  #topbar button, #mapbox .mapbtns button { min-width: 38px; min-height: 34px; }
+  #info button { padding: 7px 12px; }
+}
+
+@media (max-width: 720px) {
+  #btn-more { display: block; margin-left: 4px; }
+  #topbar .menu { display: none; }
+  #topbar.open .menu {
+    display: grid;
+    grid-template-columns: repeat(4, 44px);
+    gap: 6px;
+    position: fixed;
+    top: 46px; right: 8px;
+    background: linear-gradient(#7a5a32, #5c4123);
+    border: 2px solid #3e2b15;
+    border-radius: 10px;
+    padding: 8px;
+    z-index: 20;
+    box-shadow: var(--shadow);
+  }
+  #topbar.open .menu button { height: 40px; font-size: 18px; }
+  #topbar .adm button { min-width: 30px; }
+  /* the build palette becomes a single swipeable row so the map stays visible */
+  #palette { max-height: none; padding: 8px; bottom: 74px; }
+  #palette .head { margin-bottom: 4px; }
+  #palette .items { display: flex; overflow-x: auto; gap: 6px; padding-bottom: 4px; scroll-snap-type: x proximity; }
+  #palette .item { flex: none; width: 92px; scroll-snap-align: start; }
+  #palette .desc { min-height: 0; font-size: 12px; margin-top: 6px; max-height: 3.2em; overflow: hidden; }
+  #palette:not([hidden]) ~ #touch-hint { top: 8px; }
+  #messages .msg:nth-child(n + 3) { display: none; }
+  #touch-hint { top: 8px; }
+  #mapbox .mapbtns button { width: 38px; height: 36px; }
+}
+@media (max-width: 720px) {
+  #touch-hint { left: 8px; right: 8px; transform: none; max-width: none; padding: 6px 6px 6px 10px; }
+  #touch-hint .txt { flex: 1; }
+  #touch-hint .txt span { font-size: 12px; }
+  .panel:not([hidden]) ~ #mapbox { display: none; }
+  #topbar .stat[title="Animals"] { display: none; }
+}

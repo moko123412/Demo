@@ -25,6 +25,11 @@ The zoo runs through day and night. Lamps and rides light up after dark, animals
 Fences wear out over time, and unhappy strong animals bash them, so hire maintenance workers to repair them.
 Zookeepers recapture escaped animals.
 
+On phones and tablets: tap a tile to build, drag one finger to paint paths, terrain or plants, drag a shop or animal
+to position it and lift to place, tap two corners for a fence, and use two fingers to move and zoom the map.
+
+Happy animals with a mate become pregnant and give birth a few days later; the baby stays near its mother.
+
 Click any animal, guest, staff member or exhibit to see what they're thinking. An exhibit's panel lists its
 suitability score for each species and what the animals still want, for example
 "Lions would like more Acacia Tree or Elephant Grass."

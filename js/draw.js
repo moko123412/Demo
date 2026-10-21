@@ -299,6 +299,32 @@ function buildTextures() {
   }
 }
 
+function groundDetail(c, type, x, y, r) {
+  const tuft = (cols, n, h) => {
+    ell(c, x, y + 0.5, n * 0.9, 1.2, 'rgba(0,0,0,0.18)');
+    for (let i = 0; i < n; i++) {
+      const bx = x + (i - n / 2) * 1.1, lean = (i - n / 2) * 0.6, bh = h * (0.6 + ((i * 7) % 5) / 10);
+      curve(c, bx, y, bx + lean * 0.5, y - bh * 0.6, bx + lean, y - bh, cols[i % cols.length], 0.9);
+    }
+  };
+  switch (type) {
+    case 'grass':
+      if (r < 0.12) { tuft(['#4c8634', '#6aa848'], 4, 4); circ(c, x + 0.5, y - 4, 1, ['#f4f4f0', '#f2d24a', '#c9a0e8', '#ff8fa3'][Math.floor(r * 40) % 4]); }
+      else tuft(['#4c8634', '#7bb555', '#5c973c'], 5, 4 + r * 3);
+      break;
+    case 'savannah': tuft(['#a8904a', '#d6c06a', '#bfa858'], 6, 6 + r * 4); break;
+    case 'rainforest': tuft(['#2f5524', '#4d7a33', '#3b6a2c'], 5, 5 + r * 3); break;
+    case 'dirt': case 'sand':
+      ell(c, x, y, 1.6 + r, 1 + r * 0.5, type === 'dirt' ? '#6b5038' : '#b8a070');
+      ell(c, x - 0.4, y - 0.4, 0.8 + r * 0.5, 0.5, type === 'dirt' ? '#a8896a' : '#f2e4b8');
+      break;
+    case 'snow':
+      ell(c, x, y, 3 + r * 2, 1.4, 'rgba(160,185,210,0.35)');
+      ell(c, x - 0.6, y - 0.6, 2.4 + r * 2, 1.1, '#ffffff');
+      break;
+  }
+}
+
 function smoothNoise(x, y) {
   const S = 6, gx = x / S, gy = y / S, x0 = Math.floor(gx), y0 = Math.floor(gy), fx = gx - x0, fy = gy - y0;
   const sm = f => f * f * (3 - 2 * f);
@@ -351,6 +377,20 @@ function renderTerrain() {
         const d = depth[idx(x, y)] || 9;
         c.fillStyle = d === 1 ? 'rgba(150,215,235,0.3)' : d === 2 ? 'rgba(120,195,230,0.12)' : `rgba(8,35,90,${Math.min(0.3, (d - 2) * 0.08).toFixed(3)})`;
         c.fill();
+      }
+    }
+  }
+
+  // little tufts, flowers and pebbles scattered over open ground
+  for (let y = 0; y < MAP_H; y++) {
+    for (let x = 0; x < MAP_W; x++) {
+      const t = G.tiles[idx(x, y)];
+      if (t.path || t.t === 'water') continue;
+      const n = Math.floor(hash2(x, y, 61) * 4);
+      for (let k = 0; k < n; k++) {
+        const u = 0.15 + hash2(x, y, 70 + k) * 0.7, v = 0.15 + hash2(x, y, 80 + k) * 0.7;
+        const dx = isoX(x + u, y + v) + TERR_OFF_X, dy = isoY(x + u, y + v), r = hash2(x, y, 90 + k);
+        groundDetail(c, t.t, dx, dy, r);
       }
     }
   }
@@ -426,6 +466,61 @@ function drawClouds(c, now) {
     c.fillStyle = g;
     c.beginPath(); c.arc(0, 0, r, 0, Math.PI * 2); c.fill();
     c.restore();
+  }
+}
+
+// ---------- wildlife: birds flying over and butterflies ----------
+const flocks = [];
+let nextFlock = 4;
+function drawSkyLife(c, now, dt) {
+  const t = now / 1000;
+  nextFlock -= dt;
+  if (nextFlock <= 0 && darkness() < 0.4) {
+    nextFlock = rand(12, 30);
+    const fromLeft = Math.random() < 0.5, n = randi(3, 9), y = cam.y + rand(-viewH * 0.4, viewH * 0.2) / cam.zoom;
+    const birds = [];
+    for (let i = 0; i < n; i++) birds.push({ dx: -Math.abs(i - n / 2) * 14 * rand(0.8, 1.2), dy: (i - n / 2) * 9 + rand(-3, 3), ph: rand(0, 6) });
+    flocks.push({ x: cam.x + (fromLeft ? -1 : 1) * (viewW / 2 / cam.zoom + 120), y, vx: (fromLeft ? 1 : -1) * rand(70, 110), vy: rand(-12, 12), birds, life: 0, big: Math.random() < 0.3 });
+    if (Math.random() < 0.6) Sound.bird && Sound.ctx && !Sound.muted && Sound.ok('flock', 2) && Sound.bird();
+  }
+  for (let f = flocks.length - 1; f >= 0; f--) {
+    const fl = flocks[f];
+    fl.x += fl.vx * dt; fl.y += fl.vy * dt; fl.life += dt;
+    if (fl.life > 40) { flocks.splice(f, 1); continue; }
+    const dir = Math.sign(fl.vx);
+    for (const b of fl.birds) {
+      const bx = fl.x + b.dx * dir, by = fl.y + b.dy, flap = Math.sin(t * (fl.big ? 7 : 11) + b.ph);
+      // shadow on the ground far below
+      ell(c, bx + 40, by + 110, fl.big ? 4 : 2.5, 1.2, 'rgba(0,0,0,0.12)');
+      const w = fl.big ? 9 : 6, col = fl.big ? '#f4f4f4' : '#2b2b30';
+      c.beginPath();
+      c.moveTo(bx - w, by - flap * w * 0.6);
+      c.quadraticCurveTo(bx - w * 0.4, by - 2 - flap * 2, bx, by);
+      c.quadraticCurveTo(bx + w * 0.4, by - 2 - flap * 2, bx + w, by - flap * w * 0.6);
+      c.strokeStyle = col;
+      c.lineWidth = fl.big ? 1.8 : 1.3;
+      c.lineCap = 'round';
+      c.stroke();
+    }
+  }
+}
+
+function drawButterflies(c, now, vis) {
+  if (darkness() > 0.5) return;
+  const t = now / 1000;
+  for (const o of G.objects.values()) {
+    if (o.type !== 'flowers' && o.type !== 'bush' && o.type !== 'gardenfountain') continue;
+    const cx = isoX(o.x + 0.5, o.y + 0.5), cy = isoY(o.x + 0.5, o.y + 0.5);
+    if (!vis(cx, cy)) continue;
+    for (let k = 0; k < (o.type === 'flowers' ? 2 : 1); k++) {
+      const s = o.id * 3 + k, a = t * (0.7 + hash2(s, 1) * 0.6) + hash2(s, 2) * 6;
+      const x = cx + Math.cos(a) * 14 + Math.sin(a * 2.3) * 4, y = cy - 12 + Math.sin(a * 1.7) * 6;
+      const flap = Math.abs(Math.sin(t * 14 + s));
+      const col = ['#ffd23f', '#ff8fa3', '#ffffff', '#8fc4f0'][s % 4];
+      ell(c, x - 1.6 * flap, y, 1.8 * flap + 0.3, 1.3, col);
+      ell(c, x + 1.6 * flap, y, 1.8 * flap + 0.3, 1.3, col);
+      line(c, x, y - 1, x, y + 1, '#333', 0.6);
+    }
   }
 }
 
@@ -593,6 +688,11 @@ function drawObjectSprite(c, type, v, px, py, obj = null) {
   SHADE = true;
   c.save();
   c.translate(px, py);
+  if (OBJECTS[type].cat === 'foliage') {
+    // trees lean gently in the wind
+    const sway = Math.sin(performance.now() / 1000 * 1.3 + v * 20) * (type === 'tallgrass' || type === 'bamboo' ? 0.07 : 0.025);
+    c.transform(1, 0, sway, 1, 0, 0);
+  }
   switch (type) {
     case 'acacia': {
       const seed = (v * 997) | 0;
@@ -1014,10 +1114,21 @@ function drawEntrance(c) {
 }
 
 // ---------- animals ----------
+// Jointed legs with a trotting gait: diagonal pairs move together, the foot
+// lifts on the forward swing, knees bend, and the far legs are a shade darker.
+const GAIT = [0, Math.PI, Math.PI, 0];
 function legs(c, xs, y0, len, color, t, moving, w) {
+  const n = xs.length;
   xs.forEach((x, i) => {
-    const sw = moving ? Math.sin(t + (i % 2) * Math.PI) * 3 : 0;
-    line(c, x, y0, x + sw, y0 + len, color, w);
+    const front = i >= n / 2, ph = t + (n === 4 ? GAIT[i] : (i % 2) * Math.PI);
+    const swing = moving ? Math.sin(ph) : 0, lift = moving ? Math.max(0, Math.cos(ph)) : 0;
+    const col = i % 2 === 0 ? tint(color, -0.18) : color;
+    const hipX = x, kneeX = x + swing * len * 0.12 + (front ? -1 : 1) * (0.6 + lift * len * 0.14);
+    const kneeY = y0 + len * 0.52 - lift * len * 0.08;
+    const footX = x + swing * len * 0.32, footY = y0 + len - lift * len * 0.22;
+    line(c, hipX, y0, kneeX, kneeY, col, w);
+    line(c, kneeX, kneeY, footX, footY, col, w * 0.78);
+    line(c, footX - 0.6, footY, footX + 1.2, footY, tint(color, -0.45), w * 0.7);
   });
 }
 
@@ -1085,11 +1196,7 @@ function bearShape(c, o, col) {
     ell(c, 15, -6, 2.5, 2, col.muzzle);
     return;
   }
-  c.fillStyle = col.dark;
-  [-9, -5, 5, 9].forEach((x, i) => {
-    const sw = moving ? Math.sin(t + (i % 2) * Math.PI) * 2 : 0;
-    c.fillRect(x + sw - 2, -8, 4, 8);
-  });
+  legs(c, [-9, -5, 5, 9], -9, 9, col.dark, t, moving, 4.2);
   ell(c, 0, -12, 13, 7.5, col.body);
   if (col.panda) ell(c, 4, -12, 4, 7.5, col.dark);
   else ell(c, -2, -17, 7, 4, col.hump);
@@ -1114,11 +1221,7 @@ const ANIMAL_SHAPES = {
       curve(c, 17, -9, 20, -3, 23, -2, '#8e9097', 3.5);
       return;
     }
-    c.fillStyle = '#7d7f86';
-    [-9, -4, 5, 10].forEach((x, i) => {
-      const sw = moving ? Math.sin(t + (i % 2) * Math.PI) * 2 : 0;
-      c.fillRect(x + sw - 2.5, -10, 5, 10);
-    });
+    legs(c, [-9, -4, 5, 10], -10, 10, '#7d7f86', t, moving, 5.0);
     curve(c, -14, -18, -17, -12, -16, -7, '#7d7f86', 1.5);
     ell(c, 0, -17, 14, 9, '#8e9097');
     if (play) c.rotate(-0.12);
@@ -1223,8 +1326,7 @@ const ANIMAL_SHAPES = {
   hippo(c, o) {
     const { anim: t, moving, state } = o;
     if (state !== 'rest') {
-      c.fillStyle = '#76696f';
-      [-8, -4, 5, 9].forEach((x, i) => { const sw = moving ? Math.sin(t + (i % 2) * Math.PI) * 1.5 : 0; c.fillRect(x + sw - 2.5, -6, 5, 6); });
+      legs(c, [-8, -4, 5, 9], -6, 6, '#76696f', t, moving, 5.0);
     }
     const y = state === 'rest' ? 4 : 0;
     ell(c, 0, -11 + y, 14, 8, '#8a7d86');
@@ -1248,8 +1350,7 @@ const ANIMAL_SHAPES = {
     if (state === 'play') c.rotate(0.12 * Math.sin(t));
     const y = state === 'rest' ? 5 : 0;
     if (state !== 'rest') {
-      c.fillStyle = '#827d74';
-      [-9, -5, 5, 9].forEach((x, i) => { const sw = moving ? Math.sin(t + (i % 2) * Math.PI) * 2 : 0; c.fillRect(x + sw - 2.5, -8, 5, 8); });
+      legs(c, [-9, -5, 5, 9], -8, 8, '#827d74', t, moving, 5.0);
     }
     curve(c, -14, -14 + y, -17, -11 + y, -16, -7 + y, '#827d74', 1.5);
     ell(c, 0, -13 + y, 14, 7.5, '#9a958c');
@@ -1363,6 +1464,7 @@ function drawAnimal(c, a, px, py) {
   let lift = 0;
   if (a.state === 'play' && ['buck', 'pounce', 'hop'].includes(sp.play)) lift = -Math.abs(Math.sin(a.anim)) * (sp.play === 'hop' ? 12 : 6);
   else if (sp.play === 'hop' && moving) lift = -Math.abs(Math.sin(a.anim * 0.5)) * 7;
+  if (moving && !lift) lift = -Math.abs(Math.cos(a.anim)) * 1.2;
   c.translate(0, lift * s);
   c.scale(a.face * s, s);
   if (swim) {
@@ -1520,6 +1622,9 @@ function render(now) {
     }
   }
 
+  drawButterflies(ctx, now, vis);
+  drawSkyLife(ctx, now, Math.min(0.1, (now - (render.last || now)) / 1000) * Math.max(1, G.speed || 0));
+  render.last = now;
   drawToolPreview(ctx);
 
   // screen-space overlays
@@ -1571,8 +1676,26 @@ function drawBubble(c, x, y, icon) {
   c.textBaseline = 'alphabetic';
 }
 
+let waterPattern = null;
 function drawWaterGlints(c, now, vis) {
   const t = now / 1000;
+  // drifting ripples over every visible water tile
+  if (!waterPattern && texCanvases) waterPattern = c.createPattern(texCanvases.water, 'repeat');
+  if (waterPattern && waterPattern.setTransform) {
+    waterPattern.setTransform(new DOMMatrix([1, 0, 0, 1, (t * 9) % TEX, (t * 4) % TEX]));
+    c.save();
+    c.globalAlpha = 0.45;
+    c.fillStyle = waterPattern;
+    c.beginPath();
+    for (let y = 0; y < MAP_H; y++) for (let x = 0; x < MAP_W; x++) {
+      if (G.tiles[idx(x, y)].t !== 'water') continue;
+      const px = isoX(x + 0.5, y + 0.5), py = isoY(x + 0.5, y + 0.5);
+      if (!vis(px, py)) continue;
+      c.moveTo(px, py - TH / 2); c.lineTo(px + TW / 2, py); c.lineTo(px, py + TH / 2); c.lineTo(px - TW / 2, py); c.closePath();
+    }
+    c.fill();
+    c.restore();
+  }
   c.fillStyle = 'rgba(255,255,255,0.35)';
   for (let y = 0; y < MAP_H; y++) for (let x = 0; x < MAP_W; x++) {
     if (G.tiles[idx(x, y)].t !== 'water') continue;
@@ -1622,7 +1745,7 @@ function drawToolPreview(c) {
       UI.tip = G.tiles[idx(h.x, h.y)].path ? '' : money(PATH_COST);
       break;
     case 'fence': {
-      const a = UI.dragStart || h;
+      const a = UI.dragStart || UI.fenceAnchor || h;
       const x0 = Math.min(a.x, h.x), x1 = Math.max(a.x, h.x), y0 = Math.min(a.y, h.y), y1 = Math.max(a.y, h.y);
       c.globalAlpha = 0.75;
       for (let x = x0; x <= x1; x++) {

@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
   <title>Menagerie Zoo Builder</title>
   <link rel="stylesheet" href="css/style.css">
 </head>
@@ -24,6 +24,7 @@
       <button data-speed="2" title="Fast (2)">⏩</button>
       <button data-speed="4" title="Fastest (3)">⏭</button>
     </div>
+    <button id="btn-more" aria-label="Menu">☰</button>
     <div class="group menu">
       <button id="btn-sound" title="Sound on/off">🔊</button>
       <button id="btn-music" title="Music on/off">🎵</button>
@@ -52,6 +53,11 @@
     <aside id="info" class="panel" hidden></aside>
     <div id="messages" aria-live="polite"></div>
     <div id="cursor-tip" hidden></div>
+    <div id="touch-hint" hidden>
+      <div class="txt"></div>
+      <button class="undo" aria-label="Undo">↶</button>
+      <button class="done primary">✓ Done</button>
+    </div>
     <div id="mapbox">
       <div class="mapbtns">
         <button id="btn-undo" title="Undo last build (Ctrl+Z)">↶</button>

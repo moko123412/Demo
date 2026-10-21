@@ -125,6 +125,7 @@ function updateAnimal(a, dt) {
     else if (a.hunger < 40) think(a, '🍖');
     else if (a.escaped) think(a, '❗');
     else if (a.happy < 35) think(a, '😠');
+    else if (a.pregnant && Math.random() < 0.5) think(a, '💕');
     else if (a.happy > 80) think(a, '❤️');
     else a.thoughtT = 0;
   }
@@ -190,29 +191,65 @@ function animalDecide(a, ex) {
   }
   if (darkness() > 0.5 && r < 0.75) { a.state = 'rest'; a.timer = rand(8, 16); return; }
   if (r < 0.25) { a.state = 'rest'; a.timer = rand(5, 10); return; }
-  a.path = wanderTarget(a, ex, 4) || [];
+  const mom = a.baby && a.mom && G.animals.find(m => m.id === a.mom);
+  if (mom && exhibitAt(mom.x, mom.y) === ex) {
+    const mx = Math.floor(mom.x), my = Math.floor(mom.y);
+    a.path = findPath(Math.floor(a.x), Math.floor(a.y), (x, y) => Math.abs(x - mx) + Math.abs(y - my) <= 1, animalStepper(a, ex), 600) || [];
+  } else a.path = wanderTarget(a, ex, 4) || [];
   a.state = a.path.length ? 'walk' : 'idle';
   a.timer = rand(1, 3);
 }
 
+const PREGNANCY_DAYS = 6;
 function breedAnimals() {
+  // due mothers give birth
+  for (const mom of G.animals) {
+    if (!mom.pregnant || G.time - mom.pregnant < DAY_SECONDS * PREGNANCY_DAYS) continue;
+    mom.pregnant = 0;
+    const sp = SPECIES[mom.sp], n = mom.sp === 'penguin' || mom.sp === 'flamingo' || mom.sp === 'lion' || mom.sp === 'cheetah' ? randi(1, 2) : 1;
+    for (let k = 0; k < n; k++) {
+      const baby = createAnimal(mom.sp, mom.x + rand(-0.2, 0.2), mom.y + rand(-0.2, 0.2), true);
+      baby.hunger = 100;
+      baby.mom = mom.id;
+      G.animals.push(baby);
+      G.births[mom.sp] = (G.births[mom.sp] || 0) + 1;
+      notify(`A baby ${sp.name} was born to ${mom.name}! Say hello to ${baby.name}.`, 'good', { x: mom.x, y: mom.y });
+    }
+    floatText(mom.x, mom.y, n > 1 ? '🍼 Twins!' : '🍼 New baby!', '#ffd6e7');
+    Sound.play('baby');
+  }
+  // happy pairs may conceive
   for (const ex of G.exhibits) {
     for (const spKey in ex.stats.bySpecies) {
       const sp = SPECIES[spKey];
       const group = ex.stats.animals.filter(a => a.sp === spKey);
-      if (group.length >= sp.group[1]) continue;
-      const adults = group.filter(a => !a.baby && a.happy > 75 && a.health > 60);
-      const mom = adults.find(a => a.sex === 'F'), dad = adults.find(a => a.sex === 'M');
-      if (!mom || !dad || Math.random() > 1 / (DAY_SECONDS * 45)) continue;
-      const baby = createAnimal(spKey, mom.x, mom.y, true);
-      baby.hunger = 100;
-      G.animals.push(baby);
-      G.births[spKey] = (G.births[spKey] || 0) + 1;
-      notify(`A baby ${sp.name} was born! Say hello to ${baby.name}.`, 'good', { x: mom.x, y: mom.y });
-      floatText(mom.x, mom.y, '🍼 New baby!', '#ffd6e7');
-      Sound.play('baby');
+      if (group.length + group.filter(a => a.pregnant).length >= sp.group[1]) continue;
+      const adults = group.filter(a => !a.baby && a.happy > 72 && a.health > 60);
+      const mom = adults.find(a => a.sex === 'F' && !a.pregnant && G.time - (a.lastBirth || -1e9) > DAY_SECONDS * 20);
+      const dad = adults.find(a => a.sex === 'M');
+      if (!mom || !dad || Math.random() > 1 / (DAY_SECONDS * 22)) continue;
+      mom.pregnant = G.time;
+      mom.lastBirth = G.time;
+      notify(`${mom.name} the ${sp.name} is expecting a baby!`, 'good', { x: mom.x, y: mom.y });
+      floatText(mom.x, mom.y, '💕', '#ffd6e7');
     }
   }
+}
+
+// Why an adult animal is or isn't able to have babies, for the info panel.
+function breedingStatus(a) {
+  if (a.baby) return 'Growing up';
+  if (a.pregnant) {
+    const left = Math.max(0, Math.ceil(PREGNANCY_DAYS - (G.time - a.pregnant) / DAY_SECONDS));
+    return `🤰 Expecting a baby in ${left} day${left === 1 ? '' : 's'}!`;
+  }
+  const ex = exhibitAt(a.x, a.y);
+  if (!ex) return 'Must be in an exhibit to breed';
+  const mates = ex.stats.animals.filter(o => o.sp === a.sp && !o.baby && o.sex !== a.sex);
+  if (!mates.length) return `Needs a ${a.sex === 'F' ? 'male' : 'female'} mate to have babies`;
+  if (a.happy <= 72) return 'Will have babies once happiness is above 72';
+  if (ex.stats.animals.filter(o => o.sp === a.sp).length >= SPECIES[a.sp].group[1]) return 'The group is full, so no more babies';
+  return '💕 Ready to start a family';
 }
 
 // ---------- time of day ----------

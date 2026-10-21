@@ -109,6 +109,10 @@ const UI = {
       this.refreshTop(true);
     }));
     $('#btn-status').addEventListener('click', () => this.toggleStatus());
+    $('#touch-hint .done').addEventListener('click', () => this.setCategory('select'));
+    $('#touch-hint .undo').addEventListener('click', () => undo());
+    $('#btn-more').addEventListener('click', () => $('#topbar').classList.toggle('open'));
+    document.querySelectorAll('#topbar .menu button').forEach(b => b.addEventListener('click', () => $('#topbar').classList.remove('open')));
     const soundBtns = () => {
       $('#btn-sound').textContent = Sound.muted ? '🔇' : '🔊';
       $('#btn-music').classList.toggle('off', !Sound.musicOn || Sound.muted);
@@ -141,6 +145,7 @@ const UI = {
 
   setCategory(cat) {
     this.cat = cat;
+    this.fenceAnchor = null;
     document.querySelectorAll('#toolbar .tool').forEach(b => b.classList.toggle('on', b.dataset.cat === cat));
     const pal = $('#palette');
     if (cat === 'select' || cat === 'bulldoze') {
@@ -181,6 +186,22 @@ const UI = {
     }
   },
 
+  // Instructions for the active tool on touch screens and narrow windows.
+  updateTouchHint() {
+    const el = $('#touch-hint'), mode = this.tool.mode;
+    const show = mode !== 'select' && (matchMedia('(pointer: coarse)').matches || window.innerWidth < 720);
+    if (!show) { if (!el.hidden) el.hidden = true; return; }
+    const name = mode === 'terrain' ? TERRAIN[this.tool.key].name : mode === 'path' ? 'Path' : mode === 'fence' ? FENCES[this.tool.key].name :
+      mode === 'animal' ? SPECIES[this.tool.key].name : mode === 'bulldoze' ? 'Bulldozer' : OBJECTS[this.tool.key].name;
+    const paint = mode === 'terrain' || mode === 'path' || mode === 'bulldoze' || (mode === 'object' && ['foliage', 'rock'].includes(OBJECTS[this.tool.key].cat));
+    const how = mode === 'fence' ? (this.fenceAnchor ? 'Now tap the opposite corner' : 'Tap one corner, then the opposite corner') :
+      paint ? 'Tap tiles, or drag to paint' : 'Tap a tile, or drag to position then lift';
+    const html = `<b>${name}</b><span>${how} · two fingers move the map</span>`;
+    const body = el.querySelector('.txt');
+    if (body.innerHTML !== html) body.innerHTML = html;
+    el.hidden = false;
+  },
+
   renderStaffList() {
     const k = G.staff.filter(s => s.role === 'keeper').length, m = G.staff.length - k;
     $('#palette .extra').innerHTML = `<p>You employ <b>${k}</b> zookeeper${k === 1 ? '' : 's'} and <b>${m}</b> maintenance worker${m === 1 ? '' : 's'}.</p>` +
@@ -200,6 +221,7 @@ const UI = {
     this.infoT -= dt;
     if (this.infoT <= 0 && this.sel) { this.infoT = 0.4; this.refreshInfo(); }
     if (this.messagesDirty || Math.random() < 0.05) this.renderMessages();
+    this.updateTouchHint();
     if (!$('#status').hidden && Math.random() < 0.05) this.renderStatus();
     if (!$('#goals').hidden && Math.random() < 0.05) this.renderGoals(false);
   },
@@ -262,6 +284,7 @@ const UI = {
     const days = Math.floor((G.time - a.born) / DAY_SECONDS);
     let h = `<h3>${a.name}</h3><div class="sub">${sp.name} · ${a.sex === 'M' ? '♂ male' : '♀ female'}${a.baby ? ' · baby' : ''}</div>`;
     h += `<div class="doing">${doing}</div>`;
+    h += `<p class="breed">${breedingStatus(a)}</p>`;
     h += this.bar('Happiness', a.happy) + this.bar('Hunger', 100 - a.hunger, true) + this.bar('Health', a.health);
     if (ev) {
       h += `<div class="sect">Exhibit suitability <b>${pct(ev.total * 100)}</b></div>`;
