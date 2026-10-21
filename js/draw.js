@@ -1203,6 +1203,7 @@ function drawAnimal(c, a, px, py) {
     c.translate(0, 9);
     c.beginPath(); c.rect(-30, -80, 60, 78); c.clip();
   }
+  if (!swim && drawSpriteAnimal(c, a, moving)) { c.restore(); return; }
   SHADE = true;
   drawAnimalShape(c, a.sp, { anim: a.anim, moving, state: swim ? 'idle' : a.state, sex: a.sex, play: sp.play, id: a.id, baby: a.baby });
   SHADE = false;
