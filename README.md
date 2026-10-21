@@ -23,6 +23,8 @@ Click any animal, guest, staff member or exhibit to see what they're thinking. A
 suitability score for each species and what the animals still want, for example
 "Lions would like more Acacia Tree or Elephant Grass."
 
+Sound is generated in the browser (no audio files). Use 🔊 to mute and 🎵 to toggle the music.
+
 Controls: drag or WASD to scroll, wheel or pinch to zoom, Space to pause, 1/2/3 to change speed, G for the grid, Esc to cancel.
 The game autosaves every three months, and the 💾/📂 buttons save and load by hand (saves live in the browser's localStorage).
 
@@ -36,4 +38,5 @@ The game autosaves every three months, and the 💾/📂 buttons save and load b
 | `js/sim.js` | Animal, guest and staff behaviour, breeding, rating and monthly finances |
 | `js/draw.js` | Isometric camera, baked terrain layer and all procedurally drawn sprites |
 | `js/ui.js` | Top bar, build palette, info panels and dialogs |
+| `js/audio.js` | Synthesized sound: animal calls, building and UI sounds, ambience and music |
 | `js/main.js` | Input handling and the main loop |

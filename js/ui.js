@@ -95,6 +95,13 @@ const UI = {
       this.refreshTop(true);
     }));
     $('#btn-status').addEventListener('click', () => this.toggleStatus());
+    const soundBtns = () => {
+      $('#btn-sound').textContent = Sound.muted ? '🔇' : '🔊';
+      $('#btn-music').classList.toggle('off', !Sound.musicOn || Sound.muted);
+    };
+    $('#btn-sound').addEventListener('click', () => { Sound.start(); Sound.toggleMute(); soundBtns(); });
+    $('#btn-music').addEventListener('click', () => { Sound.start(); Sound.toggleMusic(); soundBtns(); });
+    setTimeout(soundBtns);
     $('#btn-save').addEventListener('click', () => saveGame());
     $('#btn-load').addEventListener('click', () => { if (loadGame()) this.afterLoad(); });
     $('#btn-new').addEventListener('click', () => this.showWelcome(true));

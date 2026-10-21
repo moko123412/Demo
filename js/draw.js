@@ -25,7 +25,62 @@ function resizeCanvas() {
 }
 
 // ---------- primitives ----------
+// ---------- colour & shading ----------
+// While SHADE is on, ellipses with a hex colour are drawn with a radial gradient
+// lit from the upper left, which gives sprites a rounded, pre-rendered look.
+let SHADE = false;
+const rgbCache = new Map();
+function hexRgb(hex) {
+  let v = rgbCache.get(hex);
+  if (!v) {
+    let h = hex.slice(1);
+    if (h.length === 3) h = h.split('').map(ch => ch + ch).join('');
+    const n = parseInt(h, 16);
+    v = [(n >> 16) & 255, (n >> 8) & 255, n & 255];
+    rgbCache.set(hex, v);
+  }
+  return v;
+}
+function tint(hex, t) {
+  const [r, g, b] = hexRgb(hex), k = t >= 0 ? 255 : 0, a = Math.abs(t);
+  return '#' + [r, g, b].map(v => Math.round(v + (k - v) * a).toString(16).padStart(2, '0')).join('');
+}
+const gradCache = new WeakMap();
+function shadeGrad(c, hex) {
+  let m = gradCache.get(c);
+  if (!m) { m = new Map(); gradCache.set(c, m); }
+  let g = m.get(hex);
+  if (!g) {
+    g = c.createRadialGradient(-0.4, -0.5, 0.05, -0.15, -0.2, 1.3);
+    g.addColorStop(0, tint(hex, 0.32));
+    g.addColorStop(0.45, hex);
+    g.addColorStop(1, tint(hex, -0.38));
+    m.set(hex, g);
+  }
+  return g;
+}
+function hslHex(h, s, l) {
+  s /= 100; l /= 100;
+  const f = n => {
+    const k = (n + h / 30) % 12, v = l - s * Math.min(l, 1 - l) * Math.max(-1, Math.min(k - 3, 9 - k, 1));
+    return Math.round(v * 255).toString(16).padStart(2, '0');
+  };
+  return '#' + f(0) + f(8) + f(4);
+}
+
 function ell(c, x, y, rx, ry, fill, rot = 0) {
+  if (SHADE && fill.charCodeAt(0) === 35 && rx > 0.8) {
+    c.save();
+    c.translate(x, y);
+    if (rot) c.rotate(rot);
+    c.scale(Math.abs(rx), Math.abs(ry) || 0.01);
+    c.beginPath();
+    c.arc(0, 0, 1, 0, Math.PI * 2);
+    c.fillStyle = shadeGrad(c, fill);
+    c.fill();
+    c.restore();
+    return;
+  }
   c.beginPath();
   c.ellipse(x, y, Math.abs(rx), Math.abs(ry), rot, 0, Math.PI * 2);
   c.fillStyle = fill;
@@ -69,6 +124,42 @@ function isoBox(c, px, py, hw, h, top, left, right, hh = hw / 2) {
   poly(c, [[px, py + hh], [px + hw, py], [px + hw, py - h], [px, py + hh - h]], right);
   poly(c, [[px, py - hh - h], [px + hw, py - h], [px, py + hh - h], [px - hw, py - h]], top);
 }
+// Leafy crown made of many shaded clumps, drawn back to front.
+function canopy(c, cx, cy, rx, ry, n, base, seed, flat = 1) {
+  const pts = [];
+  for (let k = 0; k < n; k++) {
+    const a = hash2(k, seed) * Math.PI * 2, r = Math.sqrt(hash2(k, seed + 1));
+    pts.push([cx + Math.cos(a) * r * rx * 0.8, cy + Math.sin(a) * r * ry * 0.8, (0.34 + hash2(k, seed + 2) * 0.26) * Math.min(rx, ry * 1.7)]);
+  }
+  pts.sort((p, q) => p[1] - q[1]);
+  ell(c, cx, cy + ry * 0.15, rx, ry, tint(base, -0.25));
+  for (const [x, y, r] of pts) ell(c, x, y, r, r * flat, y < cy - ry * 0.3 ? tint(base, 0.08) : base);
+}
+function trunk(c, x0, y0, x1, y1, w, color) {
+  const g = c.createLinearGradient(x0 - w, 0, x0 + w, 0);
+  g.addColorStop(0, tint(color, 0.25));
+  g.addColorStop(0.6, color);
+  g.addColorStop(1, tint(color, -0.35));
+  c.beginPath();
+  c.moveTo(x0 - w, y0);
+  c.quadraticCurveTo((x0 + x1) / 2 - w * 0.8, (y0 + y1) / 2, x1 - w * 0.6, y1);
+  c.lineTo(x1 + w * 0.6, y1);
+  c.quadraticCurveTo((x0 + x1) / 2 + w * 0.8, (y0 + y1) / 2, x0 + w, y0);
+  c.closePath();
+  c.fillStyle = g;
+  c.fill();
+}
+// Polygon lit from the upper left.
+function polyLit(c, pts, hex, stroke) {
+  let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity;
+  for (const [x, y] of pts) { x0 = Math.min(x0, x); y0 = Math.min(y0, y); x1 = Math.max(x1, x); y1 = Math.max(y1, y); }
+  const g = c.createLinearGradient(x0, y0, x1, y1);
+  g.addColorStop(0, tint(hex, 0.3));
+  g.addColorStop(0.5, hex);
+  g.addColorStop(1, tint(hex, -0.4));
+  poly(c, pts, g, stroke);
+}
+
 function pyramidRoof(c, px, py, hw, h, rh, left, right, hh = hw / 2) {
   const apex = [px, py - h - rh];
   poly(c, [[px - hw, py - h], [px, py + hh - h], apex], left);
@@ -83,61 +174,253 @@ function tileCorners(x, y, ox = 0) {
 function edgeOf(corners, d) { return [corners[d], corners[(d + 1) % 4]]; }
 
 // ---------- terrain layer (baked) ----------
+function seeded(seed) {
+  return () => {
+    seed = (seed + 0x6D2B79F5) | 0;
+    let t = Math.imul(seed ^ (seed >>> 15), 1 | seed);
+    t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
+}
+
+// Seamless 128px textures for each terrain, generated once.
+const TEX = 128;
+let texCanvases = null;
+function buildTextures() {
+  texCanvases = {};
+  for (const key of [...TERRAIN_ORDER, 'path']) {
+    const cv = document.createElement('canvas');
+    cv.width = cv.height = TEX;
+    const t = cv.getContext('2d'), R = seeded(key.length * 7919 + key.charCodeAt(0) * 31);
+    const base = key === 'path' ? '#8c7a60' : TERRAIN[key].color;
+    t.fillStyle = base;
+    t.fillRect(0, 0, TEX, TEX);
+    // draw fn at (x, y) and at its wrapped copies so the texture tiles seamlessly
+    const at = (x, y, fn) => {
+      for (const ox of [0, -TEX, TEX]) for (const oy of [0, -TEX, TEX]) {
+        if ((ox && Math.abs(x + ox - TEX / 2) > TEX / 2 + 12) || (oy && Math.abs(y + oy - TEX / 2) > TEX / 2 + 12)) continue;
+        fn(x + ox, y + oy);
+      }
+    };
+    const blade = (x, y, len, col, lean) => {
+      t.strokeStyle = col; t.lineWidth = 1;
+      t.beginPath(); t.moveTo(x, y); t.lineTo(x + lean, y - len); t.stroke();
+    };
+    // soft colour blotches
+    for (let i = 0; i < 40; i++) {
+      const x = R() * TEX, y = R() * TEX, r = 6 + R() * 16;
+      at(x, y, (px, py) => {
+        t.fillStyle = R() < 0.5 ? 'rgba(255,255,255,0.05)' : 'rgba(0,0,0,0.06)';
+        t.beginPath(); t.ellipse(px, py, r, r * 0.6, 0, 0, Math.PI * 2); t.fill();
+      });
+    }
+    switch (key) {
+      case 'grass':
+        for (let i = 0; i < 1300; i++) {
+          const x = R() * TEX, y = R() * TEX, len = 2 + R() * 3, col = ['#5c973c', '#7bb555', '#4c8634', '#8ec668', '#6aa848'][(R() * 5) | 0], lean = R() * 2 - 1;
+          at(x, y, (px, py) => blade(px, py, len, col, lean));
+        }
+        for (let i = 0; i < 14; i++) at(R() * TEX, R() * TEX, (px, py) => { t.fillStyle = ['#f4f4f0', '#f2d24a', '#c9a0e8'][i % 3]; t.fillRect(px, py, 1.5, 1.5); });
+        break;
+      case 'savannah':
+        for (let i = 0; i < 1000; i++) {
+          const x = R() * TEX, y = R() * TEX, len = 3 + R() * 5, col = ['#d6c06a', '#b39a48', '#c9b25c', '#9a9a4a', '#e0cd84'][(R() * 5) | 0], lean = R() * 3 - 1.5;
+          at(x, y, (px, py) => blade(px, py, len, col, lean));
+        }
+        break;
+      case 'dirt':
+        for (let i = 0; i < 2500; i++) at(R() * TEX, R() * TEX, (px, py) => { t.fillStyle = R() < 0.5 ? '#9b7b54' : '#755638'; t.fillRect(px, py, 1, 1); });
+        for (let i = 0; i < 160; i++) {
+          const x = R() * TEX, y = R() * TEX, r = 0.6 + R() * 1.4, col = ['#a8896a', '#6b5038', '#b8a080'][(R() * 3) | 0];
+          at(x, y, (px, py) => { t.fillStyle = col; t.beginPath(); t.ellipse(px, py, r, r * 0.7, 0, 0, Math.PI * 2); t.fill(); });
+        }
+        break;
+      case 'sand':
+        for (let i = 0; i < 3500; i++) at(R() * TEX, R() * TEX, (px, py) => { t.fillStyle = R() < 0.5 ? '#efdeac' : '#c9b277'; t.fillRect(px, py, 1, 1); });
+        for (let i = 0; i < 18; i++) {
+          const x = R() * TEX, y = R() * TEX, w = 10 + R() * 14;
+          at(x, y, (px, py) => { t.strokeStyle = 'rgba(160,130,70,0.25)'; t.lineWidth = 1; t.beginPath(); t.moveTo(px, py); t.quadraticCurveTo(px + w / 2, py - 2, px + w, py); t.stroke(); });
+        }
+        break;
+      case 'rainforest':
+        for (let i = 0; i < 420; i++) {
+          const x = R() * TEX, y = R() * TEX, r = 1.2 + R() * 2, rot = R() * 3, col = ['#2f5524', '#4d7a33', '#5d5a26', '#3b6a2c', '#6b4f2a'][(R() * 5) | 0];
+          at(x, y, (px, py) => { t.fillStyle = col; t.beginPath(); t.ellipse(px, py, r, r * 0.45, rot, 0, Math.PI * 2); t.fill(); });
+        }
+        break;
+      case 'snow':
+        for (let i = 0; i < 60; i++) {
+          const x = R() * TEX, y = R() * TEX, r = 4 + R() * 10;
+          at(x, y, (px, py) => { t.fillStyle = 'rgba(150,175,205,0.08)'; t.beginPath(); t.ellipse(px, py, r, r * 0.5, 0, 0, Math.PI * 2); t.fill(); });
+        }
+        for (let i = 0; i < 260; i++) at(R() * TEX, R() * TEX, (px, py) => { t.fillStyle = '#ffffff'; t.fillRect(px, py, 1, 1); });
+        break;
+      case 'water':
+        for (let i = 0; i < 90; i++) {
+          const x = R() * TEX, y = R() * TEX, w = 4 + R() * 10;
+          at(x, y, (px, py) => { t.strokeStyle = R() < 0.5 ? 'rgba(255,255,255,0.12)' : 'rgba(0,30,80,0.12)'; t.lineWidth = 1; t.beginPath(); t.moveTo(px, py); t.quadraticCurveTo(px + w / 2, py - 1.5, px + w, py); t.stroke(); });
+        }
+        break;
+      case 'path': {
+        // staggered cobbles; the pattern is later mapped onto the iso grid
+        const cw = 16, ch = 16;
+        for (let row = 0; row < TEX / ch; row++) for (let col = 0; col < TEX / cw; col++) {
+          const x = col * cw + (row % 2) * cw / 2, y = row * ch, l = 0.85 + R() * 0.3;
+          const tone = Math.round(196 * l), c2 = `rgb(${tone},${Math.round(tone * 0.9)},${Math.round(tone * 0.74)})`;
+          at(x + 1, y + 1, (px, py) => {
+            t.fillStyle = c2;
+            t.beginPath(); t.roundRect(px, py, cw - 2, ch - 2, 4); t.fill();
+            t.fillStyle = 'rgba(255,255,255,0.18)';
+            t.fillRect(px + 2, py + 1.5, cw - 7, 2);
+          });
+        }
+        break;
+      }
+    }
+    texCanvases[key] = cv;
+  }
+}
+
+function smoothNoise(x, y) {
+  const S = 6, gx = x / S, gy = y / S, x0 = Math.floor(gx), y0 = Math.floor(gy), fx = gx - x0, fy = gy - y0;
+  const sm = f => f * f * (3 - 2 * f);
+  const a = hash2(x0, y0, 21), b = hash2(x0 + 1, y0, 21), c = hash2(x0, y0 + 1, 21), d = hash2(x0 + 1, y0 + 1, 21);
+  return (a + (b - a) * sm(fx)) * (1 - sm(fy)) + (c + (d - c) * sm(fx)) * sm(fy);
+}
+
 function renderTerrain() {
+  if (!texCanvases) buildTextures();
   if (!terrainCanvas) {
     terrainCanvas = document.createElement('canvas');
     terrainCanvas.width = (MAP_W + MAP_H) * TW / 2;
     terrainCanvas.height = (MAP_W + MAP_H) * TH / 2 + 2;
   }
   const c = terrainCanvas.getContext('2d');
+  const pat = {};
+  for (const k in texCanvases) pat[k] = c.createPattern(texCanvases[k], 'repeat');
+  // map the cobble texture onto the iso grid: 128px of texture = 2 tiles
+  if (pat.path.setTransform) pat.path.setTransform(new DOMMatrix([0.5, 0.25, -0.5, 0.25, TERR_OFF_X, 0]));
   c.clearRect(0, 0, terrainCanvas.width, terrainCanvas.height);
+
+  // distance from shore for water depth
+  const depth = new Uint8Array(MAP_W * MAP_H), queue = [];
+  for (let i = 0; i < depth.length; i++) {
+    if (G.tiles[i].t !== 'water') continue;
+    const x = i % MAP_W, y = (i / MAP_W) | 0;
+    if (DIRS.some(([dx, dy]) => { const n = tileAt(x + dx, y + dy); return n && n.t !== 'water'; })) { depth[i] = 1; queue.push(i); }
+  }
+  for (let h = 0; h < queue.length; h++) {
+    const i = queue[h], x = i % MAP_W, y = (i / MAP_W) | 0;
+    for (const [dx, dy] of DIRS) {
+      if (!inMap(x + dx, y + dy)) continue;
+      const ni = idx(x + dx, y + dy);
+      if (G.tiles[ni].t === 'water' && !depth[ni]) { depth[ni] = Math.min(255, depth[i] + 1); queue.push(ni); }
+    }
+  }
+
+  const center = (x, y) => [isoX(x + 0.5, y + 0.5) + TERR_OFF_X, isoY(x + 0.5, y + 0.5)];
   for (let y = 0; y < MAP_H; y++) {
     for (let x = 0; x < MAP_W; x++) {
-      const t = G.tiles[idx(x, y)], T = TERRAIN[t.t];
-      const px = isoX(x + 0.5, y + 0.5) + TERR_OFF_X, py = isoY(x + 0.5, y + 0.5);
+      const t = G.tiles[idx(x, y)], [px, py] = center(x, y);
       diamond(c, px, py, TW / 2 + 0.6, TH / 2 + 0.3);
-      c.fillStyle = T.color;
+      c.fillStyle = pat[t.t];
       c.fill();
-      for (let k = 0; k < 12; k++) {
-        const u = 0.08 + hash2(x, y, k) * 0.84, v = 0.08 + hash2(x, y, k + 40) * 0.84;
-        const sx = isoX(x + u, y + v) + TERR_OFF_X, sy = isoY(x + u, y + v);
-        c.fillStyle = T.speck[k % 3];
-        if (t.t === 'water') { if (k < 4) c.fillRect(sx - 3, sy, 6, 1); }
-        else if (t.t === 'grass' || t.t === 'savannah' || t.t === 'rainforest') c.fillRect(sx, sy - 2, 1, 3);
-        else c.fillRect(sx, sy, 2, 1);
-      }
-      if (t.path) {
-        diamond(c, px, py, TW / 2 - 2, TH / 2 - 1);
-        c.fillStyle = '#c9b597';
+      // gentle large-scale light variation hides the tile grid
+      const n = smoothNoise(x, y) - 0.5;
+      c.fillStyle = n > 0 ? `rgba(255,250,220,${(n * 0.16).toFixed(3)})` : `rgba(0,25,0,${(-n * 0.2).toFixed(3)})`;
+      c.fill();
+      if (t.t === 'water') {
+        const d = depth[idx(x, y)] || 9;
+        c.fillStyle = d === 1 ? 'rgba(150,215,235,0.3)' : d === 2 ? 'rgba(120,195,230,0.12)' : `rgba(8,35,90,${Math.min(0.3, (d - 2) * 0.08).toFixed(3)})`;
         c.fill();
-        for (let k = 0; k < 9; k++) {
-          const u = 0.15 + hash2(x, y, k + 90) * 0.7, v = 0.15 + hash2(x, y, k + 130) * 0.7;
-          c.fillStyle = k % 2 ? '#b8a383' : '#d8c7aa';
-          c.fillRect(isoX(x + u, y + v) + TERR_OFF_X, isoY(x + u, y + v), 3, 1.5);
-        }
       }
     }
   }
-  // borders between terrains, shorelines and path kerbs
+
+  // ragged blending where terrain types meet, and damp banks next to water
   for (let y = 0; y < MAP_H; y++) {
     for (let x = 0; x < MAP_W; x++) {
-      const t = G.tiles[idx(x, y)], corners = tileCorners(x, y, TERR_OFF_X);
+      const t = G.tiles[idx(x, y)], [px, py] = center(x, y), corners = tileCorners(x, y, TERR_OFF_X);
+      let clipped = false;
       DIRS.forEach(([dx, dy], d) => {
-        const n = tileAt(x + dx, y + dy);
-        if (!n) return;
+        const nb = tileAt(x + dx, y + dy);
+        if (!nb || nb.t === t.t) return;
+        if (!clipped) { c.save(); diamond(c, px, py); c.clip(); clipped = true; }
         const [a, b] = edgeOf(corners, d);
-        if (t.path && !n.path) {
-          const cx = isoX(x + 0.5, y + 0.5) + TERR_OFF_X, cy = isoY(x + 0.5, y + 0.5);
-          const k = 0.07;
-          line(c, a[0] + (cx - a[0]) * k, a[1] + (cy - a[1]) * k, b[0] + (cx - b[0]) * k, b[1] + (cy - b[1]) * k, '#8f7a5a', 2);
-        } else if (t.t === 'water' && n.t !== 'water') {
-          line(c, a[0], a[1], b[0], b[1], 'rgba(230,242,248,0.85)', 2.5);
-        } else if (n.t !== t.t && !t.path && !n.path) {
-          line(c, a[0], a[1], b[0], b[1], 'rgba(0,0,0,0.10)', 1);
+        if (t.t === 'water') return;
+        const wet = nb.t === 'water';
+        c.fillStyle = wet ? 'rgba(70,55,30,0.28)' : pat[nb.t];
+        for (let k = 0; k < 7; k++) {
+          const f = (k + 0.5) / 7, r = (wet ? 3 : 3.5) + hash2(x * 4 + d, y * 4 + k, 5) * (wet ? 3 : 5);
+          const ex = a[0] + (b[0] - a[0]) * f, ey = a[1] + (b[1] - a[1]) * f;
+          c.beginPath();
+          c.ellipse(ex, ey, r * 1.6, r * 0.8, 0, 0, Math.PI * 2);
+          c.fill();
         }
+      });
+      if (clipped) c.restore();
+      if (t.t === 'water') {
+        DIRS.forEach(([dx, dy], d) => {
+          const nb = tileAt(x + dx, y + dy);
+          if (!nb || nb.t === 'water') return;
+          const [a, b] = edgeOf(corners, d);
+          line(c, a[0], a[1], b[0], b[1], 'rgba(235,246,250,0.75)', 2.2);
+          line(c, a[0] + (px - a[0]) * 0.12, a[1] + (py - a[1]) * 0.12, b[0] + (px - b[0]) * 0.12, b[1] + (py - b[1]) * 0.12, 'rgba(255,255,255,0.25)', 1.2);
+        });
+      }
+    }
+  }
+
+  // paths on top: cobbles with kerbs
+  for (let y = 0; y < MAP_H; y++) {
+    for (let x = 0; x < MAP_W; x++) {
+      const t = G.tiles[idx(x, y)];
+      if (!t.path) continue;
+      const [px, py] = center(x, y), corners = tileCorners(x, y, TERR_OFF_X);
+      diamond(c, px, py, TW / 2 + 0.5, TH / 2 + 0.25);
+      c.fillStyle = pat.path;
+      c.fill();
+      DIRS.forEach(([dx, dy], d) => {
+        const nb = tileAt(x + dx, y + dy);
+        if (nb && nb.path) return;
+        const [a, b] = edgeOf(corners, d), k = 0.08;
+        const ia = [a[0] + (px - a[0]) * k, a[1] + (py - a[1]) * k], ib = [b[0] + (px - b[0]) * k, b[1] + (py - b[1]) * k];
+        line(c, a[0], a[1], b[0], b[1], 'rgba(40,30,15,0.35)', 2.5);
+        line(c, ia[0], ia[1], ib[0], ib[1], '#e2d6bc', 2.2);
       });
     }
   }
+}
+
+// Slow-moving cloud shadows across the zoo.
+function drawClouds(c, now) {
+  const t = now / 1000, spanX = (MAP_W + MAP_H) * TW / 2, spanY = (MAP_W + MAP_H) * TH / 2;
+  for (let k = 0; k < 5; k++) {
+    const x = ((hash2(k, 1) * spanX + t * (10 + k * 2)) % (spanX + 600)) - TERR_OFF_X - 300;
+    const y = hash2(k, 2) * spanY;
+    const r = 180 + hash2(k, 3) * 160;
+    c.save();
+    c.translate(x, y);
+    c.scale(1, 0.5);
+    const g = c.createRadialGradient(0, 0, r * 0.2, 0, 0, r);
+    g.addColorStop(0, 'rgba(0,10,30,0.09)');
+    g.addColorStop(1, 'rgba(0,10,30,0)');
+    c.fillStyle = g;
+    c.beginPath(); c.arc(0, 0, r, 0, Math.PI * 2); c.fill();
+    c.restore();
+  }
+}
+
+let vignette = null;
+function drawVignette(c) {
+  if (!vignette || vignette.w !== viewW || vignette.h !== viewH) {
+    const g = c.createRadialGradient(viewW / 2, viewH / 2, Math.min(viewW, viewH) * 0.45, viewW / 2, viewH / 2, Math.max(viewW, viewH) * 0.75);
+    g.addColorStop(0, 'rgba(0,0,0,0)');
+    g.addColorStop(1, 'rgba(10,20,5,0.28)');
+    vignette = { w: viewW, h: viewH, g };
+  }
+  c.fillStyle = vignette.g;
+  c.fillRect(0, 0, viewW, viewH);
 }
 
 // ---------- fences ----------
@@ -178,56 +461,66 @@ function drawFence(c, type, x1, y1, x2, y2) {
 // ---------- objects ----------
 function drawObjectSprite(c, type, v, px, py) {
   const s = 0.85 + v * 0.3;
+  SHADE = true;
   c.save();
   c.translate(px, py);
   switch (type) {
-    case 'acacia':
-      shadow(c, 5, 0, 24 * s, 8 * s);
+    case 'acacia': {
+      const seed = (v * 997) | 0;
+      shadow(c, 6, 1, 26 * s, 9 * s);
       c.scale(s, s);
-      curve(c, 0, 0, -3, -15, 2, -30, '#6b4a2b', 3.5);
-      line(c, 1, -22, -11, -32, '#6b4a2b', 2);
-      line(c, 2, -26, 12, -34, '#6b4a2b', 2);
-      ell(c, 0, -36, 28, 7, '#4f6a2c');
-      ell(c, -2, -39, 24, 6, '#68893a');
-      ell(c, 4, -41, 15, 4, '#7fa547');
+      trunk(c, 0, 0, 2, -30, 2.4, '#6b4a2b');
+      line(c, 1, -22, -12, -32, '#5e4026', 2);
+      line(c, 2, -26, 13, -34, '#5e4026', 2);
+      canopy(c, 0, -37, 27, 6, 16, '#62842f', seed, 0.5);
       break;
+    }
     case 'palm': {
-      shadow(c, 6, 0, 16 * s, 6 * s);
+      shadow(c, 8, 1, 18 * s, 7 * s);
       c.scale(s, s);
-      for (let i = 0; i < 7; i++) ell(c, i * 1.1, -i * 6.5 - 2, 3.2, 3.6, i % 2 ? '#8b6b43' : '#76593a');
-      const tx = 7, ty = -46;
+      for (let i = 0; i < 8; i++) ell(c, i * 0.9, -i * 5.8 - 2, 3.3, 3.4, i % 2 ? '#8b6b43' : '#7a5c38');
+      const tx = 7, ty = -47;
       const sw = Math.sin(performance.now() / 900 + v * 10) * 1.5;
-      for (let k = 0; k < 7; k++) {
-        const a = -Math.PI + k * (Math.PI / 6);
-        const ex = tx + Math.cos(a) * 22, ey = ty + Math.sin(a) * 8 + 10;
-        curve(c, tx, ty, tx + Math.cos(a) * 12, ty - 8 + sw, ex, ey, k % 2 ? '#3f8f3a' : '#2f7a30', 4);
+      for (let k = 0; k < 9; k++) {
+        const a = -Math.PI + k * (Math.PI / 8) + (k % 2) * 0.1, len = 22 + (k % 3) * 3;
+        const ex = tx + Math.cos(a) * len, ey = ty + Math.sin(a) * 7 + 12 + sw * (k % 2);
+        const mx = tx + Math.cos(a) * len * 0.5, my = ty - 7 + sw;
+        const col = k % 2 ? '#3e8a35' : '#2e7029';
+        c.beginPath();
+        c.moveTo(tx, ty);
+        c.quadraticCurveTo(mx, my - 4, ex, ey);
+        c.quadraticCurveTo(mx, my + 3, tx, ty + 1);
+        c.fillStyle = col;
+        c.fill();
+        curve(c, tx, ty, mx, my - 1, ex, ey, tint(col, 0.25), 0.7);
       }
-      circ(c, tx - 2, ty + 3, 2.2, '#5a3d1e');
-      circ(c, tx + 2, ty + 3, 2.2, '#6b4a26');
+      circ(c, tx - 2, ty + 3, 2.4, '#5a3d1e');
+      circ(c, tx + 2, ty + 3, 2.4, '#6b4a26');
       break;
     }
     case 'pine':
-      shadow(c, 4, 0, 14 * s, 6 * s);
+      shadow(c, 5, 1, 16 * s, 7 * s);
       c.scale(s, s * 1.1);
-      c.fillStyle = '#5b3e25';
-      c.fillRect(-2, -10, 4, 10);
-      for (let i = 0; i < 3; i++) {
-        const y0 = -6 - i * 12, w = 15 - i * 4;
-        poly(c, [[-w, y0], [w, y0], [0, y0 - 20]], '#356b40');
-        poly(c, [[-w, y0], [0, y0], [0, y0 - 20]], '#2a5734');
+      trunk(c, 0, 0, 0, -12, 2.2, '#5b3e25');
+      for (let i = 0; i < 4; i++) {
+        const y0 = -4 - i * 10, w = 16 - i * 3.6, h = 18;
+        const pts = [[-w, y0]];
+        for (let k = 1; k < 6; k++) pts.push([-w + (k / 6) * w * 2, y0 + (k % 2 ? 2.5 : 0)]);
+        pts.push([w, y0], [0, y0 - h]);
+        const g = c.createLinearGradient(-w, 0, w, 0);
+        g.addColorStop(0, '#4a8458'); g.addColorStop(0.45, '#356b40'); g.addColorStop(1, '#1f4728');
+        poly(c, pts, g);
       }
       break;
-    case 'oak':
-      shadow(c, 4, 0, 18 * s, 7 * s);
+    case 'oak': {
+      const seed = (v * 991) | 0;
+      shadow(c, 6, 1, 20 * s, 8 * s);
       c.scale(s, s);
-      c.fillStyle = '#6b4a2b';
-      c.fillRect(-3, -18, 6, 18);
-      circ(c, -9, -25, 10, '#3a7330');
-      circ(c, 9, -25, 10, '#3a7330');
-      circ(c, 0, -34, 12, '#478838');
-      circ(c, -4, -29, 9, '#549a42');
-      circ(c, 5, -37, 5, '#68b052');
+      trunk(c, 0, 0, 0, -20, 3.2, '#6b4a2b');
+      line(c, 0, -16, -7, -24, '#5e4026', 2);
+      canopy(c, 0, -31, 17, 13, 16, '#478838', seed);
       break;
+    }
     case 'bamboo':
       shadow(c, 2, 0, 12, 5);
       c.scale(s, s);
@@ -253,17 +546,17 @@ function drawObjectSprite(c, type, v, px, py) {
         curve(c, x, 2 - (k % 3), x + 2, -h / 2, x + (k % 2 ? 4 : -3), -h, ['#b5a642', '#9c9a3a', '#cbb95c'][k % 3], 1.5);
       }
       break;
-    case 'eucalyptus':
-      shadow(c, 4, 0, 16 * s, 6 * s);
+    case 'eucalyptus': {
+      const seed = (v * 983) | 0;
+      shadow(c, 4, 1, 16 * s, 6 * s);
       c.scale(s, s * 1.15);
-      curve(c, 0, 0, -2, -18, 1, -36, '#d9d2c3', 3.5);
-      line(c, 0, -22, -8, -30, '#d9d2c3', 1.8);
-      line(c, 0, -27, 7, -34, '#d9d2c3', 1.8);
-      circ(c, -9, -32, 7, '#7d9a84');
-      circ(c, 8, -36, 7, '#7d9a84');
-      circ(c, 0, -41, 8, '#8fae95');
-      circ(c, -2, -36, 5, '#a4c2a8');
+      trunk(c, 0, 0, 1, -34, 2.2, '#d9d2c3');
+      line(c, 0, -22, -8, -30, '#cfc7b6', 1.8);
+      line(c, 0, -27, 7, -34, '#cfc7b6', 1.8);
+      canopy(c, -6, -33, 9, 7, 8, '#7d9a84', seed);
+      canopy(c, 4, -40, 11, 8, 10, '#86a68d', seed + 7);
       break;
+    }
     case 'cactus':
       shadow(c, 2, 0, 8, 3);
       c.scale(s, s);
@@ -275,27 +568,26 @@ function drawObjectSprite(c, type, v, px, py) {
       circ(c, 0, -31, 1.8, '#f2c94c');
       break;
     case 'bush':
-      shadow(c, 0, 0, 14 * s, 5 * s);
+      shadow(c, 0, 1, 15 * s, 5.5 * s);
       c.scale(s, s);
-      circ(c, -6, -6, 7, '#3d7a35');
-      circ(c, 6, -6, 7, '#3d7a35');
-      circ(c, 0, -11, 8, '#4d8f40');
-      circ(c, -2, -12, 4, '#62a650');
+      canopy(c, 0, -8, 12, 7, 11, '#447f38', (v * 977) | 0);
       break;
     case 'rock': case 'icerock': {
       const ice = type === 'icerock';
       shadow(c, 0, 1, 16 * s, 6 * s);
       c.scale(s, s);
       const pts = [[-14, 0], [-12, -10], [-4, -16], [8, -14], [14, -5], [12, 2], [-6, 3]];
-      poly(c, pts, ice ? '#cfe6f2' : '#8a8780', ice ? '#9cc3d9' : '#5e5b55');
-      poly(c, [[-12, -10], [-4, -16], [8, -14], [2, -8], [-6, -6]], ice ? '#f4fbff' : '#a8a59d');
+      polyLit(c, pts, ice ? '#c6e0ee' : '#8a8780', ice ? '#9cc3d9' : '#5e5b55');
+      polyLit(c, [[-12, -10], [-4, -16], [8, -14], [2, -8], [-6, -6]], ice ? '#f4fbff' : '#a8a59d');
+      if (!ice) { ell(c, -5, -1, 4, 1.5, 'rgba(70,110,50,0.45)'); line(c, 2, -9, 9, -4, 'rgba(0,0,0,0.25)', 0.8); }
       break;
     }
     case 'rockcave': case 'icecave': {
       const ice = type === 'icecave';
       shadow(c, 0, 2, 34, 12);
-      poly(c, [[-30, 2], [-28, -14], [-16, -28], [2, -33], [20, -27], [30, -11], [30, 4], [0, 10]], ice ? '#d7ebf5' : '#7d776e', ice ? '#a6c9dc' : '#57524b');
-      poly(c, [[-26, -12], [-16, -26], [2, -31], [10, -22], [-6, -16]], ice ? '#f7fcff' : '#958f85');
+      polyLit(c, [[-30, 2], [-28, -14], [-16, -28], [2, -33], [20, -27], [30, -11], [30, 4], [0, 10]], ice ? '#d7ebf5' : '#7d776e', ice ? '#a6c9dc' : '#57524b');
+      polyLit(c, [[-26, -12], [-16, -26], [2, -31], [10, -22], [-6, -16]], ice ? '#f7fcff' : '#958f85');
+      line(c, -18, -8, -6, -2, 'rgba(0,0,0,0.2)', 1);
       ell(c, 8, -5, 10, 10, ice ? '#3d6f8e' : '#2a2622');
       ell(c, 8, 1, 10, 4, ice ? '#5c8eab' : '#3b3631');
       break;
@@ -384,6 +676,7 @@ function drawObjectSprite(c, type, v, px, py) {
       break;
   }
   c.restore();
+  SHADE = false;
 }
 
 function drawEntrance(c) {
@@ -762,7 +1055,9 @@ function drawAnimal(c, a, px, py) {
     c.translate(0, 9);
     c.beginPath(); c.rect(-30, -80, 60, 78); c.clip();
   }
+  SHADE = true;
   drawAnimalShape(c, a.sp, { anim: a.anim, moving, state: swim ? 'idle' : a.state, sex: a.sex, play: sp.play, id: a.id });
+  SHADE = false;
   c.restore();
   if (swim) { ell(c, px, py + 7, 9 * s, 3 * s, 'rgba(255,255,255,0.35)'); }
 }
@@ -770,6 +1065,7 @@ function drawAnimal(c, a, px, py) {
 // ---------- people ----------
 function drawPerson(c, px, py, o) {
   const s = o.kid ? 0.75 : 1;
+  SHADE = true;
   c.save();
   c.translate(px, py);
   shadow(c, 0, 0, 5 * s, 2 * s);
@@ -806,6 +1102,7 @@ function drawPerson(c, px, py, o) {
   if (o.hat === 'safari') { ell(c, 0, -23, 5.5, 1.6, '#c8b07a'); ell(c, 0, -24.2, 3.3, 2.2, '#c8b07a'); }
   else if (o.hat === 'cap') { ell(c, -0.3, -23.4, 3.6, 1.9, o.shirt); ell(c, 3, -22.5, 2.5, 0.8, o.shirt); }
   c.restore();
+  SHADE = false;
 }
 
 function drawGuest(c, g, px, py) {
@@ -838,6 +1135,7 @@ function render(now) {
 
   ctx.drawImage(terrainCanvas, -TERR_OFF_X, 0);
   drawWaterGlints(ctx, now, vis);
+  drawClouds(ctx, now);
   if (UI.showGrid || UI.tool.mode !== 'select') drawGrid(ctx);
   if (UI.sel && UI.sel.kind === 'exhibit') {
     const ex = exhibitByKey(UI.sel.key);
@@ -907,6 +1205,7 @@ function render(now) {
 
   // screen-space overlays
   ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  drawVignette(ctx);
   let bubbles = 0;
   const showGuestBubbles = cam.zoom >= 0.55;
   for (const list of [G.animals, G.staff, G.guests]) {

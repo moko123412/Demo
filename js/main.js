@@ -192,6 +192,7 @@ function frame(now) {
   }
   render(now);
   UI.update(rdt);
+  Sound.update(rdt);
   requestAnimationFrame(frame);
 }
 
@@ -202,6 +203,8 @@ window.addEventListener('DOMContentLoaded', () => {
   newGame();
   UI.init();
   setupInput();
+  Sound.init();
+  document.addEventListener('click', e => { if (e.target.closest('button')) Sound.play('click'); });
   centerOn(ENTRANCE.x, ENTRANCE.y - 12);
   UI.showWelcome(true);
   requestAnimationFrame(frame);

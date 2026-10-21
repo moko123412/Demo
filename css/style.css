@@ -262,3 +262,4 @@ button.primary { background: linear-gradient(#6fb04f, #3d7a2b); color: #fff; bor
 #goals .actions, #result .actions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 10px; }
 #goals .actions button, #result .actions button { padding: 7px 14px; }
 #result h1 { margin: 0 0 6px; font: bold 26px Georgia, serif; color: var(--wood); }
+#btn-music.off { opacity: 0.45; text-decoration: line-through; }

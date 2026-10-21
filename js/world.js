@@ -279,6 +279,7 @@ function setTerrain(x, y, type) {
   if (!spend(TERRAIN[type].cost)) return false;
   t.t = type;
   terrainDirty = true;
+  Sound.play('brush');
   return true;
 }
 
@@ -290,6 +291,7 @@ function placePath(x, y) {
   if (!spend(PATH_COST)) return false;
   t.path = true;
   terrainDirty = true;
+  Sound.play('path');
   return true;
 }
 
@@ -310,6 +312,7 @@ function placeFenceRect(x0, y0, x1, y1, type) {
   if (!todo.length) return false;
   if (!spend(todo.length * FENCES[type].cost)) return false;
   for (const [k, i] of todo) (k === 'h' ? G.hF : G.vF)[i] = type;
+  Sound.play('fence');
   const before = G.exhibits.length;
   computeExhibits();
   if (G.exhibits.length > before) notify('New exhibit built! Add terrain, plants and animals.', 'good');
@@ -334,6 +337,7 @@ function placeObject(x, y, type) {
   if (err) return err;
   if (!spend(OBJECTS[type].cost)) return 'Not enough money';
   addObject(type, x, y);
+  Sound.play(['foliage', 'rock'].includes(OBJECTS[type].cat) ? 'plant' : 'build');
   return null;
 }
 
@@ -352,6 +356,7 @@ function placeAnimal(x, y, sp) {
   const a = createAnimal(sp, x + 0.5, y + 0.5);
   G.animals.push(a);
   updateExhibitStats();
+  Sound.animal(a);
   return null;
 }
 
@@ -367,6 +372,7 @@ function createAnimal(sp, x, y, baby = false) {
 function bulldoze(x, y) {
   const t = tileAt(x, y);
   if (!t) return false;
+  if (t.obj || t.path) Sound.play('demolish');
   if (t.obj) {
     const o = G.objects.get(t.obj);
     G.objects.delete(t.obj);
@@ -385,7 +391,7 @@ function bulldoze(x, y) {
   let removed = false;
   for (const i of [hIdx(x, y), hIdx(x, y + 1)]) if (G.hF[i]) { G.hF[i] = 0; removed = true; }
   for (const i of [vIdx(x, y), vIdx(x + 1, y)]) if (G.vF[i]) { G.vF[i] = 0; removed = true; }
-  if (removed) computeExhibits();
+  if (removed) { computeExhibits(); Sound.play('demolish'); }
   return removed;
 }
 
@@ -397,6 +403,7 @@ function hireStaff(role) {
     face: 1, anim: 0, thought: null, thoughtT: 0, done: 0,
   });
   notify(`You hired a new ${STAFF_TYPES[role].name}.`, 'good');
+  Sound.play('hire');
 }
 
 // ---------- messages & floating text ----------
@@ -404,6 +411,8 @@ function notify(text, kind = 'info', at = null) {
   G.messages.unshift({ text, kind, at, t: performance.now() });
   if (G.messages.length > 30) G.messages.length = 30;
   if (typeof UI !== 'undefined') UI.messagesDirty = true;
+  if (kind === 'bad') Sound.play('alert');
+  else if (kind === 'warn') Sound.play('error');
 }
 function floatText(x, y, text, color = '#ffe066') { G.floats.push({ x, y, text, color, t: 0 }); }
 

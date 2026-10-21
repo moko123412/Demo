@@ -178,7 +178,7 @@ function animalDecide(a, ex) {
     a.state = 'play';
     a.timer = rand(2.5, 4);
     a.anim = 0;
-    if (Math.random() < 0.4) floatText(a.x, a.y, sp.sound, '#fff');
+    if (Math.random() < 0.4) { floatText(a.x, a.y, sp.sound, '#fff'); Sound.animal(a); }
     return;
   }
   if (a.happy < 35 && r < 0.5) {
@@ -208,6 +208,7 @@ function breedAnimals() {
       G.births[spKey] = (G.births[spKey] || 0) + 1;
       notify(`A baby ${sp.name} was born! Say hello to ${baby.name}.`, 'good', { x: mom.x, y: mom.y });
       floatText(mom.x, mom.y, '🍼 New baby!', '#ffd6e7');
+      Sound.play('baby');
     }
   }
 }
@@ -237,8 +238,8 @@ function spawnGuest(priceRatio) {
     x: ENTRANCE.x + 0.5, y: ENTRANCE.y + 0.5, path: [], prev: -1,
     hunger: rand(55, 100), thirst: rand(55, 100), energy: rand(75, 100), bladder: rand(60, 100),
     happy: rand(55, 75), cash: randi(25, 110), thoughts: [], seen: [], state: 'walk', timer: 0,
-    kid, shirt: `hsl(${randi(0, 359)},${randi(45, 75)}%,${randi(40, 60)}%)`, pants: pick(['#2f3e5c', '#4a4a4a', '#6b5440', '#20304a']),
-    skin: pick(SKINS), hair: pick(HAIRS), balloon: kid && Math.random() < 0.4 ? `hsl(${randi(0, 359)},80%,60%)` : null,
+    kid, shirt: hslHex(randi(0, 359), randi(45, 75), randi(40, 60)), pants: pick(['#2f3e5c', '#4a4a4a', '#6b5440', '#20304a']),
+    skin: pick(SKINS), hair: pick(HAIRS), balloon: kid && Math.random() < 0.4 ? hslHex(randi(0, 359), 80, 60) : null,
     carry: null, carryT: 0, timeIn: 0, maxTime: rand(DAY_SECONDS * 8, DAY_SECONDS * 18), fav: null, favScore: 0,
     face: 1, anim: Math.random() * 10, thought: null, thoughtT: 0, needCooldown: 0, goal: null,
   };
@@ -395,6 +396,7 @@ function useBuilding(g) {
     G.month.sales += def.price;
     o.sales = (o.sales || 0) + def.price;
     floatText(o.x + 0.5, o.y + 0.5, '+' + money(def.price), '#9be564');
+    Sound.coinAt(o.x + 0.5, o.y + 0.5);
   }
   g.useType = o.type;
   g.state = o.type === 'bench' ? 'sit' : 'use';
@@ -467,6 +469,7 @@ function viewExhibit(g, ex) {
     G.money += amt;
     G.month.donations += amt;
     floatText(g.x, g.y, `+${money(amt)} donation`, '#9be564');
+    Sound.coinAt(g.x, g.y);
   }
 }
 
@@ -603,6 +606,7 @@ function endMonth(m) {
   const expenses = mo.construction + mo.animals + mo.salaries;
   G.lastMonth = { ...mo, income, expenses, name: MONTHS[G.monthIndex % 12] };
   notify(`${G.lastMonth.name} report: income ${money(income)}, expenses ${money(expenses)}, ${mo.guests} guests.`, income >= expenses ? 'good' : 'warn');
+  Sound.play('chime');
   if (G.rating >= 85) { G.money += 5000; notify('🏆 Your zoo won the Best Zoo Award! +$5,000', 'good'); }
   else if (G.rating >= 70) { G.money += 2000; notify('🏅 Your zoo won the Top Attraction Award! +$2,000', 'good'); }
   if (G.money < 0) notify('Your zoo is in debt! Raise admission or cut costs.', 'bad');

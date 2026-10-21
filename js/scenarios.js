@@ -120,14 +120,17 @@ function checkScenario() {
     if (v >= n) {
       G.goalsDone[i] = true;
       notify(`🎯 Goal complete: ${g.label}!`, 'good');
+      Sound.play('goal');
     }
   });
   if (G.goalsDone.length === scn.goals.length && G.goalsDone.every(Boolean)) {
     G.scnState = 'won';
     markScenarioDone(scn.id);
+    Sound.play('win');
     UI.showResult(true);
   } else if (scn.months && G.monthIndex >= scn.months) {
     G.scnState = 'failed';
+    Sound.play('lose');
     UI.showResult(false);
   }
 }
@@ -159,7 +162,9 @@ function startScenario(id) {
   G.goalsDone = scn.goals.map(() => false);
   if (scn.setup) {
     G.money = 1e9;
+    Sound.hold++;
     scn.setup();
+    Sound.hold--;
     G.month = freshMonth();
   }
   G.money = scn.money;
