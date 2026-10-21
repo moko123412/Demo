@@ -17,6 +17,7 @@
     <div class="stat adm" title="Admission price">🎟️
       <button data-adm="-1" aria-label="Lower admission">−</button><b id="st-adm">$0</b><button data-adm="1" aria-label="Raise admission">+</button>
     </div>
+    <button class="stat goals" id="btn-goals" title="Scenario goals" hidden>🎯 <b id="st-goals"></b></button>
     <div class="group speed">
       <button data-speed="0" title="Pause (Space)">⏸</button>
       <button data-speed="1" title="Normal speed (1)" class="on">▶</button>
@@ -67,9 +68,29 @@
       </ol>
       <p class="dim">Drag to scroll (or right-drag / WASD). Wheel or pinch to zoom. Space pauses. G toggles the grid.</p>
       <div class="actions">
-        <button class="start primary">Start a new zoo</button>
+        <button class="scenarios primary">🎯 Scenarios</button>
+        <button class="start">🌳 Freeform zoo</button>
         <button class="continue">Continue saved zoo</button>
         <button class="resume">Back to my zoo</button>
+      </div>
+    </section>
+    <section id="scenarios" class="panel dialog wide" hidden>
+      <div class="head"><h2>Choose a Scenario</h2><button class="close" aria-label="Close">×</button></div>
+      <div class="list"></div>
+    </section>
+
+    <section id="goals" class="panel dialog" hidden>
+      <div class="head"><h2></h2><button class="close" aria-label="Close">×</button></div>
+      <div class="body"></div>
+      <div class="actions"><button class="go primary">Let's go!</button></div>
+    </section>
+
+    <section id="result" class="panel dialog" hidden>
+      <div class="body"></div>
+      <div class="actions">
+        <button class="next primary">Choose a scenario</button>
+        <button class="retry">Try again</button>
+        <button class="keep">Keep playing</button>
       </div>
     </section>
   </main>
@@ -77,6 +98,7 @@
   <script src="js/data.js"></script>
   <script src="js/world.js"></script>
   <script src="js/sim.js"></script>
+  <script src="js/scenarios.js"></script>
   <script src="js/draw.js"></script>
   <script src="js/ui.js"></script>
   <script src="js/main.js"></script>

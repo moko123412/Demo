@@ -234,3 +234,31 @@ button.primary { background: linear-gradient(#6fb04f, #3d7a2b); color: #fff; bor
   #status .fins { grid-template-columns: 1fr; }
   .panel:not([hidden]) ~ #messages { display: none; }
 }
+
+/* ---------- scenarios ---------- */
+#topbar .goals { border: none; color: inherit; background: rgba(255, 220, 120, 0.25); cursor: pointer; }
+.dialog.wide { width: min(760px, calc(100% - 24px)); }
+#scenarios .list { display: grid; grid-template-columns: repeat(auto-fill, minmax(320px, 1fr)); gap: 10px; }
+#scenarios .scn {
+  text-align: left;
+  padding: 10px 12px;
+  background: linear-gradient(#fbf5e4, #ebdfbd);
+  border-radius: 9px;
+}
+#scenarios .scn:hover { outline: 2px solid var(--leaf-2); }
+#scenarios .scn.locked { opacity: 0.6; cursor: not-allowed; outline: none; }
+#scenarios .top { display: flex; align-items: baseline; gap: 8px; flex-wrap: wrap; }
+#scenarios .top b { font: bold 15px Georgia, serif; color: var(--wood); }
+#scenarios .stars { margin-left: auto; color: #c98a1a; letter-spacing: 1px; }
+#scenarios .won { font-size: 12px; color: var(--good); font-weight: bold; }
+#scenarios p { margin: 5px 0; font-size: 13px; }
+#scenarios ul { margin: 4px 0; padding-left: 18px; font-size: 12.5px; }
+#scenarios .meta { font-size: 12px; color: var(--dim); }
+#goals .blurb { font-style: italic; }
+.goal-list { list-style: none; padding: 0; margin: 8px 0; }
+.goal-list li { display: grid; grid-template-columns: 26px 1fr auto; gap: 6px; align-items: center; padding: 5px 0; border-bottom: 1px solid var(--khaki-2); }
+.goal-list li.ok span:nth-child(2) { color: var(--good); text-decoration: line-through; }
+.goal-list .prog { font-variant-numeric: tabular-nums; color: var(--dim); font-size: 13px; }
+#goals .actions, #result .actions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 10px; }
+#goals .actions button, #result .actions button { padding: 7px 14px; }
+#result h1 { margin: 0 0 6px; font: bold 26px Georgia, serif; color: var(--wood); }

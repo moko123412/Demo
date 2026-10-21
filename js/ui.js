@@ -38,7 +38,7 @@ function paletteItems(cat) {
     case 'terrain': return TERRAIN_ORDER.map(k => ({ kind: 'terrain', key: k, name: TERRAIN[k].name, cost: TERRAIN[k].cost, desc: 'Click and drag to paint. Each species has favourite terrain.' }));
     case 'path': return [{ kind: 'path', key: 'path', name: 'Paved Path', cost: PATH_COST, desc: 'Click and drag to lay path. Guests only walk on paths, so connect everything back to the entrance.' }];
     case 'fence': return Object.keys(FENCES).map(k => ({ kind: 'fence', key: +k, name: FENCES[k].name, cost: FENCES[k].cost, desc: 'Drag a rectangle to fence it in. A fully closed fence with no path inside becomes an exhibit.' }));
-    case 'animal': return Object.keys(SPECIES).map(k => ({ kind: 'animal', key: k, name: SPECIES[k].name, cost: SPECIES[k].cost, desc: speciesBlurb(k) }));
+    case 'animal': return Object.keys(SPECIES).filter(k => speciesAllowed(k)).map(k => ({ kind: 'animal', key: k, name: SPECIES[k].name, cost: SPECIES[k].cost, desc: speciesBlurb(k) }));
     case 'plants': return objs(o => o.cat === 'foliage');
     case 'exhibit': return objs(o => o.cat === 'rock' || o.cat === 'shelter' || o.cat === 'toy');
     case 'guest': return objs(o => o.cat === 'building' || o.cat === 'scenery');
@@ -100,6 +100,10 @@ const UI = {
     $('#btn-new').addEventListener('click', () => this.showWelcome(true));
     $('#btn-help').addEventListener('click', () => this.showWelcome(false));
     $('#status .close').addEventListener('click', () => this.toggleStatus(false));
+    $('#btn-goals').addEventListener('click', () => ($('#goals').hidden ? this.showGoals(false) : this.closeGoals()));
+    $('#goals .close').addEventListener('click', () => this.closeGoals());
+    $('#goals .go').addEventListener('click', () => this.closeGoals());
+    $('#scenarios .close').addEventListener('click', () => { $('#scenarios').hidden = true; if (!$('#welcome').hidden) return; this.setSpeed(1); });
     this.setCategory('select');
   },
 
@@ -176,6 +180,7 @@ const UI = {
     if (this.infoT <= 0 && this.sel) { this.infoT = 0.4; this.refreshInfo(); }
     if (this.messagesDirty || Math.random() < 0.05) this.renderMessages();
     if (!$('#status').hidden && Math.random() < 0.05) this.renderStatus();
+    if (!$('#goals').hidden && Math.random() < 0.05) this.renderGoals(false);
   },
 
   refreshTop(force) {
@@ -189,6 +194,12 @@ const UI = {
     $('#st-rating').style.width = pct(G.rating);
     $('#st-rating').style.background = G.rating > 66 ? '#5cc15c' : G.rating > 33 ? '#e6c040' : '#e05a4a';
     $('#st-rating-wrap').title = `Zoo rating: ${Math.round(G.rating)}/100`;
+    const scn = scenarioById(G.scenarioId);
+    $('#btn-goals').hidden = !scn;
+    if (scn) {
+      const left = monthsLeft();
+      set('#st-goals', `${G.goalsDone.filter(Boolean).length}/${scn.goals.length}` + (left !== null && G.scnState === 'playing' ? ` · ⏳ ${left} mo` : ''));
+    }
   },
 
   renderMessages() {
@@ -373,7 +384,78 @@ const UI = {
     G.speed = 0;
     const done = () => { dlg.hidden = true; this.setSpeed(1); };
     $('#welcome .start').onclick = () => { newGame(); this.afterLoad(); done(); notify('Welcome to your new zoo! Start by fencing in an exhibit with the 🚧 Fences tool.', 'good'); };
+    $('#welcome .scenarios').onclick = () => { dlg.hidden = true; this.showScenarios(); };
     $('#welcome .continue').onclick = () => { if (loadGame()) this.afterLoad(); done(); };
     $('#welcome .resume').onclick = done;
+  },
+
+  showScenarios() {
+    G.speed = 0;
+    const done = completedScenarios();
+    const stars = n => '★'.repeat(n) + '☆'.repeat(5 - n);
+    $('#scenarios .list').innerHTML = SCENARIOS.map((s, i) => {
+      const open = scenarioUnlocked(i), won = done.includes(s.id);
+      return `<button class="scn${open ? '' : ' locked'}" data-scn="${s.id}" ${open ? '' : 'disabled'}>
+        <div class="top"><b>${open ? '' : '🔒 '}${s.name}</b>${won ? '<span class="won">🏆 Completed</span>' : ''}<span class="stars" title="Difficulty">${stars(s.difficulty)}</span></div>
+        <p>${open ? s.blurb : `Complete <b>${SCENARIOS[i - 1].name}</b> to unlock.`}</p>
+        ${open ? `<ul>${s.goals.map(g => `<li>${g.label}</li>`).join('')}</ul>
+        <div class="meta">💰 ${money(s.money)} · ${s.months ? `⏳ ${s.months} months` : 'No time limit'}${s.animals ? ` · ${s.animals.length} species available` : ''}</div>` : ''}
+      </button>`;
+    }).join('');
+    $('#scenarios .list').querySelectorAll('.scn:not(.locked)').forEach(b => b.addEventListener('click', () => {
+      startScenario(b.dataset.scn);
+      this.afterLoad();
+      $('#scenarios').hidden = true;
+      $('#welcome').hidden = true;
+      this.showGoals(true);
+    }));
+    $('#scenarios').hidden = false;
+  },
+
+  showGoals(briefing) {
+    this.briefing = briefing;
+    if (briefing) this.setSpeed(0);
+    this.renderGoals(briefing);
+    $('#goals .go').hidden = !briefing;
+    $('#goals').hidden = false;
+  },
+
+  closeGoals() {
+    $('#goals').hidden = true;
+    if (this.briefing) { this.briefing = false; this.setSpeed(1); }
+  },
+
+  renderGoals(briefing) {
+    const scn = scenarioById(G.scenarioId);
+    if (!scn) { $('#goals').hidden = true; return; }
+    $('#goals h2').textContent = scn.name;
+    const left = monthsLeft();
+    const state = G.scnState === 'won' ? '<p class="good"><b>🏆 Scenario complete!</b></p>' :
+      G.scnState === 'failed' ? '<p class="bad"><b>Time ran out on this scenario.</b></p>' :
+      left !== null ? `<p>⏳ <b>${left}</b> month${left === 1 ? '' : 's'} left</p>` : '<p class="dim">No time limit.</p>';
+    const html = (briefing ? `<p class="blurb">${scn.blurb}</p>` : '') + state +
+      '<ul class="goal-list">' + scn.goals.map((g, i) => {
+        const ok = G.goalsDone[i];
+        return `<li class="${ok ? 'ok' : ''}"><span class="tick">${ok ? '✅' : '⬜'}</span><span>${g.label}</span><span class="prog">${ok ? 'Done' : progressText(g)}</span></li>`;
+      }).join('') + '</ul>' +
+      (scn.animals ? `<p class="dim">Available animals: ${scn.animals.map(a => SPECIES[a].name).join(', ')}.</p>` : '') +
+      '<p class="dim">Goals tick off as soon as you reach them. Finish them all to win.</p>';
+    const body = $('#goals .body');
+    if (body.innerHTML !== html) body.innerHTML = html;
+  },
+
+  showResult(won) {
+    const scn = scenarioById(G.scenarioId);
+    this.setSpeed(0);
+    $('#result .body').innerHTML = won
+      ? `<h1>🏆 Congratulations!</h1><p>You completed <b>${scn.name}</b>!</p>` +
+        (SCENARIOS.indexOf(scn) === SCENARIOS.length - 1 ? '<p>You have beaten every scenario. You are a true zoo tycoon!</p>'
+          : SCENARIOS.indexOf(scn) >= 1 ? `<p>A new scenario has been unlocked: <b>${SCENARIOS[SCENARIOS.indexOf(scn) + 1].name}</b>.</p>` : '')
+      : `<h1>⏳ Out of time</h1><p>You didn't finish all the goals for <b>${scn.name}</b> in time.</p><p>You can try again, or keep building this zoo just for fun.</p>`;
+    $('#result .retry').hidden = won;
+    $('#result').hidden = false;
+    $('#result .keep').onclick = () => { $('#result').hidden = true; this.setSpeed(1); };
+    $('#result .retry').onclick = () => { $('#result').hidden = true; startScenario(scn.id); this.afterLoad(); this.showGoals(true); };
+    $('#result .next').onclick = () => { $('#result').hidden = true; this.showScenarios(); };
   },
 };

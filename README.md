@@ -4,6 +4,13 @@ A classic-style isometric zoo builder that runs in the browser, inspired by the 
 
 Open `index.html` in a browser. There's no build step and nothing to install.
 
+## Scenarios
+
+Pick **🎯 Scenarios** on the start screen for eight challenges in the spirit of the original, from *Small Zoo* to the
+*Zoo Tycoon Challenge*. Each one has a briefing, a list of goals and usually a time limit. Some have special maps
+(a run-down old zoo, an island) or limit which animals you can adopt. Finishing a scenario unlocks the next one.
+Check your progress any time with the 🎯 button in the top bar. Scenarios are defined in `js/scenarios.js`.
+
 ## How to play
 
 1. **Fences**: drag a rectangle next to the path. A fully closed fence with no path inside becomes an exhibit.
@@ -25,6 +32,7 @@ The game autosaves every three months, and the 💾/📂 buttons save and load b
 | --- | --- |
 | `js/data.js` | Terrain, objects, species and staff definitions. Tune the game here. |
 | `js/world.js` | Map state, fences, exhibit detection, suitability scoring, pathfinding, building, saving and loading |
+| `js/scenarios.js` | Scenario definitions, goal checks, unlocks and special starting maps |
 | `js/sim.js` | Animal, guest and staff behaviour, breeding, rating and monthly finances |
 | `js/draw.js` | Isometric camera, baked terrain layer and all procedurally drawn sprites |
 | `js/ui.js` | Top bar, build palette, info panels and dialogs |

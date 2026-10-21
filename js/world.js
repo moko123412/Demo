@@ -40,6 +40,7 @@ function newGame() {
     exhibits: [], exMap: new Int32Array(MAP_W * MAP_H).fill(-1), litterCount: new Uint16Array(MAP_W * MAP_H),
     nextId: 1, rating: 30, monthIndex: 0, totalGuests: 0, statT: 0,
     month: freshMonth(), lastMonth: null, messages: [],
+    scenarioId: null, scnState: null, goalsDone: [], births: {},
   };
   for (let i = 0; i < MAP_W * MAP_H; i++) G.tiles.push({ t: 'grass', path: false, obj: 0 });
 
@@ -412,6 +413,7 @@ function saveGame() {
   const data = {
     v: 1, money: G.money, time: G.time, admission: G.admission, rating: G.rating, nextId: G.nextId,
     monthIndex: G.monthIndex, totalGuests: G.totalGuests, month: G.month, lastMonth: G.lastMonth,
+    scenarioId: G.scenarioId, scnState: G.scnState, goalsDone: G.goalsDone, births: G.births,
     tiles: G.tiles.map(t => TERRAIN_ORDER.indexOf(t.t) + (t.path ? 16 : 0)),
     hF: Array.from(G.hF), vF: Array.from(G.vF),
     objects: [...G.objects.values()].map(o => [o.type, o.x, o.y, +o.v.toFixed(3)]),
@@ -442,6 +444,7 @@ function loadGame() {
     hF: Uint8Array.from(data.hF), vF: Uint8Array.from(data.vF),
     animals: data.animals, staff: data.staff, food: data.food, dung: data.dung, litter: data.litter,
     guests: [], objects: new Map(), messages: [],
+    scenarioId: data.scenarioId || null, scnState: data.scnState || null, goalsDone: data.goalsDone || [], births: data.births || {},
   });
   G.tiles.forEach((t, i) => { const v = data.tiles[i]; t.t = TERRAIN_ORDER[v & 15]; t.path = v >= 16; t.obj = 0; });
   for (const [type, x, y, v] of data.objects) { const o = addObject(type, x, y); o.v = v; }

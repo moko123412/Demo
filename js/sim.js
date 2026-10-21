@@ -26,6 +26,7 @@ function step(dt) {
     updateRating();
     spawnGuests();
     breedAnimals();
+    checkScenario();
   }
   const m = Math.floor(gameDay() / DAYS_PER_MONTH);
   if (m !== G.monthIndex) endMonth(m);
@@ -204,6 +205,7 @@ function breedAnimals() {
       const baby = createAnimal(spKey, mom.x, mom.y, true);
       baby.hunger = 100;
       G.animals.push(baby);
+      G.births[spKey] = (G.births[spKey] || 0) + 1;
       notify(`A baby ${sp.name} was born! Say hello to ${baby.name}.`, 'good', { x: mom.x, y: mom.y });
       floatText(mom.x, mom.y, '🍼 New baby!', '#ffd6e7');
     }
