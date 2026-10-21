@@ -401,50 +401,41 @@ button.primary { background: linear-gradient(#6fb04f, #3d7a2b); color: #fff; bor
   #toolbar .ico { font-size: 19px; }
   #toolbar .lbl { font-size: 8.5px; letter-spacing: -0.2px; white-space: nowrap; overflow: hidden; max-width: 44px; }
 
-  /* the item list is a narrow column that scrolls up and down */
+  /* the item list opens as a short strip along the bottom */
   #palette {
-    left: 56px; top: 6px; bottom: 6px; right: auto;
-    width: 164px; max-height: none;
-    padding: 6px;
-    display: flex; flex-direction: column;
+    left: 56px; right: 0; top: auto; bottom: 0;
+    width: auto; max-height: none;
+    padding: 4px 6px 5px;
+    border-radius: 10px 0 0 0;
   }
-  #palette[hidden] { display: none; }
-  #palette .head { margin-bottom: 4px; }
-  #palette h2 { font-size: 14px; }
-  #palette .brush, #palette .fmode { font-size: 11px; margin-bottom: 5px; gap: 3px; }
-  #palette .fmode button { padding: 3px 6px; font-size: 11px; }
+  #palette .head { margin-bottom: 2px; }
+  #palette h2 { font-size: 13px; }
+  #palette .close { font-size: 18px; }
+  #palette .brush, #palette .fmode { font-size: 11px; margin-bottom: 4px; gap: 3px; }
+  #palette .brush button, #palette .fmode button { padding: 2px 6px; font-size: 11px; }
   #palette .items {
-    display: flex; flex-direction: column; gap: 4px;
-    overflow-x: hidden; overflow-y: auto;
-    flex: 1 1 auto; min-height: 0;
-    padding: 0 2px 2px 0;
-    scroll-snap-type: none;
+    display: flex; flex-direction: row; gap: 4px;
+    overflow-x: auto; overflow-y: hidden;
+    padding-bottom: 2px;
+    scroll-snap-type: x proximity;
   }
   #palette .item {
-    width: auto; min-height: 0; flex: none;
-    display: grid; grid-template-columns: 46px 1fr; grid-template-rows: auto auto;
-    column-gap: 6px; align-items: center; text-align: left;
-    padding: 3px 5px 3px 2px;
+    flex: none; width: 66px; min-height: 0;
+    padding: 2px 2px 3px;
+    scroll-snap-align: start;
   }
-  #palette .item canvas { grid-row: 1 / 3; width: 46px !important; height: auto !important; }
-  #palette .nm { min-height: 0; font-size: 11.5px; text-align: left; display: block; align-self: end; }
-  #palette .pr { font-size: 11px; align-self: start; }
-  #palette .desc { flex: none; font-size: 11px; min-height: 0; max-height: 4.2em; overflow: hidden; margin-top: 5px; }
-  #palette .extra { flex: none; font-size: 11px; max-height: 30%; overflow-y: auto; }
+  #palette .item canvas { width: 48px !important; height: auto !important; }
+  #palette .nm { font-size: 9.5px; min-height: 2.3em; line-height: 1.12; }
+  #palette .pr { font-size: 9.5px; }
+  #palette .desc { display: none; }
+  #palette .extra { font-size: 11px; max-height: 5.5em; overflow-y: auto; }
+  #palette .extra p { margin: 3px 2px; font-size: 11px; }
 
   #info { left: 56px; right: 8px; top: auto; bottom: 8px; width: auto; max-width: 340px; max-height: 46%; }
   #messages { left: 60px; bottom: 56px; max-width: calc(100% - 68px); }
   #mapbox { bottom: 8px; }
+  .panel:not([hidden]) ~ #mapbox, .panel:not([hidden]) ~ #messages { display: none; }
 
-  /* the tool banner sits beside the open list */
+  /* the tool banner runs across the top, beside the tool column */
   #touch-hint { left: 60px; right: 8px; top: 6px; transform: none; max-width: none; }
-  #palette:not([hidden]) ~ #touch-hint { left: 226px; }
-  #palette:not([hidden]) ~ #touch-hint .txt span { display: none; }
-}
-@media (max-width: 420px) {
-  #palette { width: 148px; }
-  #palette .item { grid-template-columns: 40px 1fr; }
-  #palette .item canvas { width: 40px !important; }
-  #palette:not([hidden]) ~ #touch-hint { left: 210px; }
-  #palette:not([hidden]) ~ #touch-hint button { padding: 6px 8px; }
 }
