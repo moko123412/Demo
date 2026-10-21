@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <style name="Theme.Menagerie" parent="android:Theme.Material.NoActionBar.Fullscreen">
+        <item name="android:windowBackground">#2f3b1f</item>
+        <item name="android:statusBarColor">#2f3b1f</item>
+        <item name="android:navigationBarColor">#2f3b1f</item>
+    </style>
+</resources>

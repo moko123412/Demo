@@ -61,3 +61,13 @@ The game autosaves every three months, and the 💾/📂 buttons save and load b
 | `js/ui.js` | Top bar, build palette, info panels and dialogs |
 | `js/audio.js` | Synthesized sound: animal calls, building and UI sounds, ambience and music |
 | `js/main.js` | Input handling and the main loop |
+
+## Android app
+
+`android/` holds a small Android project that shows the game full-screen in a WebView, offline. The game files are copied in at build time, so the app always matches the web version.
+
+```sh
+cd android
+ANDROID_HOME=/path/to/android-sdk ./gradlew assembleDebug
+# APK: android/app/build/outputs/apk/debug/app-debug.apk
+```
