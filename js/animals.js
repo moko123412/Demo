@@ -628,9 +628,10 @@ if (typeof SPRITE_DATA !== 'undefined') {
   for (const sp in SPRITE_DATA) {
     SPRITE_IMAGES[sp] = {};
     for (const k in SPRITE_DATA[sp].frames) {
-      const img = new Image();
-      img.src = SPRITE_DATA[sp].frames[k].src;
+      const F = SPRITE_DATA[sp].frames[k], img = new Image();
+      img.src = F.src;
       SPRITE_IMAGES[sp][k] = img;
+      if (F.tail) { const t = new Image(); t.src = F.tail.src; SPRITE_IMAGES[sp][k + ':tail'] = t; }
     }
   }
 }
@@ -652,7 +653,28 @@ function drawSpriteAnimal(c, a, moving) {
   c.save();
   if (moving) c.translate(0, -Math.abs(Math.sin(a.anim * 2)) * 0.6);
   else c.scale(1, 1 + Math.sin(G.time * (pose === 'rest' ? 1.4 : 2) + a.id) * 0.012);
-  c.drawImage(img, -W * F.ax, -H, W, H);
+  const ox = -W * F.ax, oy = -H, tailImg = SPRITE_IMAGES[a.sp][(S.frames[pose] ? pose : 'stand') + ':tail'];
+  if (F.tail && tailImg && tailImg.complete && tailImg.naturalWidth) drawSpriteTail(c, a, F.tail, tailImg, ox, oy, k, moving);
+  c.drawImage(img, ox, oy, W, H);
   c.restore();
   return true;
+}
+
+// The tail swings from where it joins the body. It is drawn in bands that
+// swing progressively further towards the tuft, so it bends instead of
+// pivoting like a stick.
+function drawSpriteTail(c, a, T, img, ox, oy, k, moving) {
+  const t = performance.now() / 1000 + a.id * 1.7;
+  const angle = moving ? Math.sin(t * 4.2) * 0.34 : Math.sin(t * 1.6) * 0.46 + Math.sin(t * 3.7) * 0.12;
+  const pvx = ox + T.px * k, pvy = oy + T.py * k, bands = 6, bottom = T.y + T.h;
+  for (let b = 0; b < bands; b++) {
+    const sy0 = Math.floor(b * T.h / bands), sy1 = Math.ceil((b + 1) * T.h / bands) + 1;
+    const mid = T.y + (sy0 + sy1) / 2, f = clamp((mid - T.py) / Math.max(1, bottom - T.py), 0.15, 1);
+    c.save();
+    c.translate(pvx, pvy);
+    c.rotate(angle * f);
+    c.translate(-pvx, -pvy);
+    c.drawImage(img, 0, sy0, T.w, Math.min(T.h, sy1) - sy0, ox + T.x * k, oy + (T.y + sy0) * k, T.w * k, (Math.min(T.h, sy1) - sy0) * k);
+    c.restore();
+  }
 }
