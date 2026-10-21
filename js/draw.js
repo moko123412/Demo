@@ -253,6 +253,27 @@ function drawObjectSprite(c, type, v, px, py) {
         curve(c, x, 2 - (k % 3), x + 2, -h / 2, x + (k % 2 ? 4 : -3), -h, ['#b5a642', '#9c9a3a', '#cbb95c'][k % 3], 1.5);
       }
       break;
+    case 'eucalyptus':
+      shadow(c, 4, 0, 16 * s, 6 * s);
+      c.scale(s, s * 1.15);
+      curve(c, 0, 0, -2, -18, 1, -36, '#d9d2c3', 3.5);
+      line(c, 0, -22, -8, -30, '#d9d2c3', 1.8);
+      line(c, 0, -27, 7, -34, '#d9d2c3', 1.8);
+      circ(c, -9, -32, 7, '#7d9a84');
+      circ(c, 8, -36, 7, '#7d9a84');
+      circ(c, 0, -41, 8, '#8fae95');
+      circ(c, -2, -36, 5, '#a4c2a8');
+      break;
+    case 'cactus':
+      shadow(c, 2, 0, 8, 3);
+      c.scale(s, s);
+      c.lineCap = 'round';
+      line(c, 0, 0, 0, -30, '#3f7d4a', 6);
+      curve(c, 0, -14, -9, -14, -8, -24, '#3f7d4a', 4.5);
+      curve(c, 0, -18, 8, -18, 7, -26, '#3f7d4a', 4.5);
+      line(c, 1, -2, 1, -28, '#5a9a62', 1.2);
+      circ(c, 0, -31, 1.8, '#f2c94c');
+      break;
     case 'bush':
       shadow(c, 0, 0, 14 * s, 5 * s);
       c.scale(s, s);
@@ -412,6 +433,9 @@ function catShape(c, o, col) {
   if (col.mane) circ(c, -21, -18 + Math.sin(t * 0.7) * 2, 2, col.mane);
   ell(c, 0, -12, 14, 6, col.body);
   ell(c, 1, -9, 10, 3, col.belly);
+  if (col.spots) {
+    for (let k = 0; k < 14; k++) circ(c, -11 + hash2(k, 5) * 22, -16 + hash2(k, 6) * 7, 0.9, '#3a2a14');
+  }
   if (col.stripes) {
     c.save();
     c.beginPath(); c.ellipse(0, -12, 14, 6, 0, 0, Math.PI * 2); c.clip();
@@ -427,7 +451,47 @@ function catShape(c, o, col) {
   circ(c, 19.5, -14, 1, '#2b1a0f');
   circ(c, 14.5, -17, 1, '#111');
   if (roar) ell(c, 18, -11, 2.5, 2, '#5a1010');
+  if (col.spots) line(c, 15, -15, 16, -12, '#3a2a14', 0.8);
   c.restore();
+}
+
+function bearShape(c, o, col) {
+  const { anim: t, moving, state } = o;
+  const patch = (x, y) => { if (col.panda) ell(c, x, y, 1.8, 1.4, col.dark, 0.4); };
+  if (state === 'play') {
+    ell(c, 0, -18, 8, 12, col.body);
+    if (col.panda) ell(c, 0, -24, 8, 3.5, col.dark);
+    line(c, -6, -22, -12, -27, col.dark, 4); line(c, 6, -22, 12, -27, col.dark, 4);
+    line(c, -3, -7, -4, 0, col.dark, 4); line(c, 3, -7, 4, 0, col.dark, 4);
+    circ(c, 0, -32, 5.5, col.body);
+    circ(c, -4, -36, 2, col.panda ? col.dark : col.body); circ(c, 4, -36, 2, col.panda ? col.dark : col.body);
+    patch(-2, -33); patch(2, -33);
+    ell(c, 1, -30, 2.5, 2, col.muzzle);
+    circ(c, 1, -31, 0.9, '#111');
+    return;
+  }
+  if (state === 'rest') {
+    ell(c, 0, -6, 13, 6, col.body);
+    if (col.panda) ell(c, 2, -8, 4, 5, col.dark);
+    circ(c, 12, -7, 5, col.body);
+    if (col.panda) { circ(c, 10, -11.5, 1.8, col.dark); patch(13, -8); }
+    ell(c, 15, -6, 2.5, 2, col.muzzle);
+    return;
+  }
+  c.fillStyle = col.dark;
+  [-9, -5, 5, 9].forEach((x, i) => {
+    const sw = moving ? Math.sin(t + (i % 2) * Math.PI) * 2 : 0;
+    c.fillRect(x + sw - 2, -8, 4, 8);
+  });
+  ell(c, 0, -12, 13, 7.5, col.body);
+  if (col.panda) ell(c, 4, -12, 4, 7.5, col.dark);
+  else ell(c, -2, -17, 7, 4, col.hump);
+  circ(c, 12, -14, 5.5, col.body);
+  circ(c, 10, -19, 2, col.panda ? col.dark : col.body); circ(c, 14, -19, 2, col.panda ? col.dark : col.body);
+  ell(c, 16.5, -12.5, 3, 2.5, col.muzzle);
+  patch(14, -15.5);
+  circ(c, 18.5, -13, 1, '#111');
+  circ(c, 13.8, -15.5, 0.9, col.panda ? '#fff' : '#111');
 }
 
 const ANIMAL_SHAPES = {
@@ -532,35 +596,129 @@ const ANIMAL_SHAPES = {
     ell(c, 11, -17, 3, 3, '#5a4a42');
     circ(c, 11, -19, 0.8, '#111');
   },
-  grizzly(c, o) {
+  grizzly(c, o) { bearShape(c, o, { body: '#6e4628', dark: '#5b3a21', hump: '#7a5132', muzzle: '#a07850' }); },
+  polarbear(c, o) { bearShape(c, o, { body: '#f1ede0', dark: '#ddd6c2', hump: '#f8f5ec', muzzle: '#e6dfcc' }); },
+  panda(c, o) {
+    const col = { body: '#f4f2ec', dark: '#1d1d22', hump: '#f4f2ec', muzzle: '#f4f2ec', panda: true };
+    if (o.state === 'play') {
+      // rolling over on its back
+      ell(c, 0, -8, 11, 8, col.body);
+      line(c, -6, -14, -9, -22 + Math.sin(o.anim) * 3, col.dark, 4);
+      line(c, 6, -14, 9, -22 - Math.sin(o.anim) * 3, col.dark, 4);
+      circ(c, 11, -9, 5.5, col.body);
+      ell(c, 12.5, -10, 1.8, 1.4, col.dark);
+      circ(c, 9, -14, 2, col.dark);
+      return;
+    }
+    bearShape(c, o, col);
+  },
+  cheetah(c, o) { catShape(c, o, { body: '#e2b65c', belly: '#f6ead0', dark: '#c99a45', muzzle: '#f6ead0', spots: true, slim: true }); },
+  hippo(c, o) {
     const { anim: t, moving, state } = o;
+    if (state !== 'rest') {
+      c.fillStyle = '#76696f';
+      [-8, -4, 5, 9].forEach((x, i) => { const sw = moving ? Math.sin(t + (i % 2) * Math.PI) * 1.5 : 0; c.fillRect(x + sw - 2.5, -6, 5, 6); });
+    }
+    const y = state === 'rest' ? 4 : 0;
+    ell(c, 0, -11 + y, 14, 8, '#8a7d86');
+    ell(c, 0, -7 + y, 11, 3, '#b8a1a8');
+    curve(c, -13, -11 + y, -16, -9 + y, -15, -6 + y, '#76696f', 1.5);
     if (state === 'play') {
-      ell(c, 0, -18, 8, 12, '#6e4628');
-      line(c, -6, -22, -12, -27, '#6e4628', 4); line(c, 6, -22, 12, -27, '#6e4628', 4);
-      line(c, -3, -7, -4, 0, '#5b3a21', 4); line(c, 3, -7, 4, 0, '#5b3a21', 4);
-      circ(c, 0, -32, 5.5, '#6e4628');
-      circ(c, -4, -36, 2, '#6e4628'); circ(c, 4, -36, 2, '#6e4628');
-      ell(c, 1, -30, 2.5, 2, '#a07850');
+      poly(c, [[11, -13], [24, -22], [24, -10]], '#8a7d86');
+      poly(c, [[13, -13], [22, -19], [22, -11]], '#c2627a');
+      line(c, 21, -19, 21, -16, '#fff', 1.2); line(c, 21, -14, 21, -11, '#fff', 1.2);
+      circ(c, 12, -17, 2, '#76696f');
       return;
     }
+    ell(c, 13, -12 + y, 7, 5.5, '#8a7d86');
+    ell(c, 18, -10 + y, 4.2, 4.5, '#a4949c');
+    circ(c, 11, -17 + y, 1.8, '#76696f');
+    circ(c, 14, -15 + y, 0.9, '#111');
+    circ(c, 20, -12 + y, 0.7, '#4a3f45');
+  },
+  rhino(c, o) {
+    const { anim: t, moving, state } = o;
+    if (state === 'play') c.rotate(0.12 * Math.sin(t));
+    const y = state === 'rest' ? 5 : 0;
+    if (state !== 'rest') {
+      c.fillStyle = '#827d74';
+      [-9, -5, 5, 9].forEach((x, i) => { const sw = moving ? Math.sin(t + (i % 2) * Math.PI) * 2 : 0; c.fillRect(x + sw - 2.5, -8, 5, 8); });
+    }
+    curve(c, -14, -14 + y, -17, -11 + y, -16, -7 + y, '#827d74', 1.5);
+    ell(c, 0, -13 + y, 14, 7.5, '#9a958c');
+    line(c, -4, -19 + y, -2, -7 + y, 'rgba(0,0,0,0.12)', 1);
+    ell(c, 14, -12 + y, 7, 4.5, '#9a958c', 0.35);
+    poly(c, [[17, -13 + y], [22, -22 + y], [20.5, -12 + y]], '#e3dccb');
+    poly(c, [[13.5, -15 + y], [15, -19 + y], [16, -15 + y]], '#e3dccb');
+    ell(c, 9.5, -17 + y, 1.5, 3, '#827d74', -0.3);
+    circ(c, 12, -14 + y, 0.9, '#111');
+  },
+  flamingo(c, o) {
+    const { anim: t, moving, state } = o;
+    const pink = '#f58fa8';
+    if (moving) {
+      line(c, -1, -20, -1 + Math.sin(t) * 3, 0, '#e2738f', 1.2);
+      line(c, 1, -20, 1 - Math.sin(t) * 3, 0, '#e2738f', 1.2);
+    } else {
+      line(c, 0, -20, 0, 0, '#e2738f', 1.2);
+      line(c, 0, -14, 4, -17, '#e2738f', 1.2);
+    }
+    if (state === 'play') {
+      const f = Math.sin(t * 2) * 4;
+      ell(c, -4, -27 - f, 9, 3, '#e8687f', -0.6);
+      ell(c, 4, -27 - f, 9, 3, '#1d1d22', 0.6);
+    }
+    ell(c, 0, -23, 7, 4.5, pink);
+    ell(c, -5, -22, 4, 2, '#e8687f');
+    if (state === 'rest') { curve(c, 5, -24, 4, -30, -1, -26, pink, 2); circ(c, -2, -26, 2.3, pink); return; }
+    c.beginPath(); c.moveTo(5, -24); c.bezierCurveTo(12, -28, 2, -34, 7, -40);
+    c.strokeStyle = pink; c.lineWidth = 2.2; c.stroke();
+    circ(c, 8, -41, 2.4, pink);
+    curve(c, 9.5, -41, 13, -40, 12, -37, '#222', 1.6);
+    circ(c, 8.5, -42, 0.6, '#111');
+  },
+  kangaroo(c, o) {
+    const { state } = o;
+    const fur = '#b5774a';
     if (state === 'rest') {
-      ell(c, 0, -6, 13, 6, '#6e4628');
-      circ(c, 12, -7, 5, '#6e4628');
-      ell(c, 15, -6, 2.5, 2, '#a07850');
+      ell(c, 0, -6, 10, 5, fur);
+      curve(c, -9, -5, -16, -3, -20, -1, fur, 3);
+      circ(c, 9, -10, 3.5, fur);
+      ell(c, 8, -15, 1.2, 3, fur, -0.3);
       return;
     }
-    c.fillStyle = '#5b3a21';
-    [-9, -5, 5, 9].forEach((x, i) => {
-      const sw = moving ? Math.sin(t + (i % 2) * Math.PI) * 2 : 0;
-      c.fillRect(x + sw - 2, -8, 4, 8);
-    });
-    ell(c, 0, -12, 13, 7.5, '#6e4628');
-    ell(c, -2, -17, 7, 4, '#7a5132');
-    circ(c, 12, -14, 5.5, '#6e4628');
-    circ(c, 10, -19, 2, '#6e4628'); circ(c, 14, -19, 2, '#6e4628');
-    ell(c, 16.5, -12.5, 3, 2.5, '#a07850');
-    circ(c, 18.5, -13, 1, '#111');
-    circ(c, 13.5, -15.5, 0.9, '#111');
+    curve(c, -4, -6, -12, -3, -19, 0, '#a5683e', 3.5);
+    ell(c, 2, -1, 6, 1.6, '#8a5532');
+    ell(c, -1, -7, 5, 4, '#a5683e');
+    ell(c, 0, -15, 5.5, 9, fur, 0.35);
+    ell(c, 2, -13, 3, 6, '#d9b08a', 0.35);
+    line(c, 4, -18, 7, -14, fur, 1.8);
+    circ(c, 5, -25, 3.5, fur);
+    ell(c, 8.5, -24, 2.5, 2, fur);
+    ell(c, 3, -30, 1.3, 3, fur, -0.3);
+    ell(c, 5.5, -30, 1.3, 3, fur, 0.2);
+    circ(c, 6, -26, 0.8, '#111');
+    circ(c, 10.6, -24, 0.7, '#222');
+  },
+  camel(c, o) {
+    const { anim: t, moving, state } = o;
+    const fur = '#c9a06a';
+    if (state === 'rest') {
+      ell(c, 0, -8, 12, 6, fur);
+      ell(c, -1, -14, 5, 4, fur);
+      curve(c, 9, -9, 14, -14, 15, -20, fur, 3.5);
+      ell(c, 17, -20, 4, 2.4, fur, 0.2);
+      return;
+    }
+    legs(c, [-7, -4, 5, 8], -16, 16, '#b88f5c', t, moving, 2.2);
+    curve(c, -10, -20, -13, -16, -12, -12, '#8a6a42', 1);
+    ell(c, 0, -20, 11, 6, fur);
+    ell(c, -1, -26, 6, 5, '#d4ad78');
+    const nod = state === 'play' ? Math.sin(t) * 2 : 0;
+    curve(c, 8, -20, 16, -18, 15, -30 + nod, fur, 4);
+    ell(c, 18, -31 + nod, 5, 2.6, fur, 0.15);
+    circ(c, 16.5, -32.5 + nod, 0.8, '#111');
+    if (state === 'play') circ(c, 25 + (t % 3) * 2, -30, 1.2, 'rgba(255,255,255,0.8)');
   },
   penguin(c, o) {
     const { anim: t, moving, state } = o;
@@ -596,7 +754,8 @@ function drawAnimal(c, a, px, py) {
   c.translate(px, py);
   if (!swim) shadow(c, 0, 0, 14 * s, 5 * s);
   let lift = 0;
-  if (a.state === 'play' && (sp.play === 'buck' || sp.play === 'pounce')) lift = -Math.abs(Math.sin(a.anim)) * 6;
+  if (a.state === 'play' && ['buck', 'pounce', 'hop'].includes(sp.play)) lift = -Math.abs(Math.sin(a.anim)) * (sp.play === 'hop' ? 12 : 6);
+  else if (sp.play === 'hop' && moving) lift = -Math.abs(Math.sin(a.anim * 0.5)) * 7;
   c.translate(0, lift * s);
   c.scale(a.face * s, s);
   if (swim) {
@@ -904,7 +1063,7 @@ function drawThumb(cv, kind, key) {
       drawFence(c, +key, 0, -13, 26, 0);
       break;
     case 'object': {
-      const big = ['rockcave', 'icecave', 'hut', 'burger', 'drinks', 'restroom', 'acacia', 'palm'].includes(key);
+      const big = ['rockcave', 'icecave', 'hut', 'burger', 'drinks', 'restroom', 'acacia', 'palm', 'eucalyptus'].includes(key);
       c.scale(big ? 0.72 : 0.95, big ? 0.72 : 0.95);
       drawObjectSprite(c, key, 0.5, 0, 0);
       break;

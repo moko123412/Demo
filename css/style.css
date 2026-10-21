@@ -172,6 +172,7 @@ button.primary { background: linear-gradient(#6fb04f, #3d7a2b); color: #fff; bor
   max-width: min(520px, calc(100% - 100px));
   pointer-events: none;
 }
+#palette:not([hidden]) ~ #messages { left: 416px; max-width: min(520px, calc(100% - 428px)); }
 #messages .msg {
   pointer-events: auto;
   background: rgba(40, 30, 15, 0.86);

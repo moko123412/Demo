@@ -38,6 +38,8 @@ const OBJECTS = {
   pine:      { cat: 'foliage', name: 'Pine Tree',       cost: 50 },
   oak:       { cat: 'foliage', name: 'Oak Tree',        cost: 50 },
   bush:      { cat: 'foliage', name: 'Shrub',           cost: 20 },
+  eucalyptus: { cat: 'foliage', name: 'Eucalyptus Tree', cost: 55 },
+  cactus:    { cat: 'foliage', name: 'Saguaro Cactus',  cost: 35 },
   rock:      { cat: 'rock',    name: 'Boulder',         cost: 40 },
   icerock:   { cat: 'rock',    name: 'Ice Rock',        cost: 45 },
   rockcave:  { cat: 'shelter', name: 'Rock Cave',       cost: 500 },
@@ -60,6 +62,7 @@ const DIETS = {
   hay:   { name: 'Hay',         color: '#d9c25a' },
   fish:  { name: 'Fish',        color: '#9fb4c4' },
   fruit: { name: 'Fruit & Veg', color: '#e08a2c' },
+  bamboo: { name: 'Bamboo Shoots', color: '#7fa344' },
 };
 
 const SPECIES = {
@@ -78,19 +81,19 @@ const SPECIES = {
   elephant: {
     name: 'African Elephant', plural: 'Elephants', cost: 3000, appeal: 10, speed: 0.55, size: 1.6, diet: 'hay',
     terrain: { savannah: 0.5, dirt: 0.4, grass: 0.1 }, foliage: ['acacia', 'tallgrass'], foliageDensity: 0.08,
-    rock: 'rock', rockDensity: 0.02, shelter: null, water: true, space: 28, group: [2, 8], compatible: ['zebra', 'giraffe'],
+    rock: 'rock', rockDensity: 0.02, shelter: null, water: true, space: 28, group: [2, 8], compatible: ['zebra', 'giraffe', 'rhino'],
     play: 'trumpet', sound: 'PAWOO!',
   },
   giraffe: {
     name: 'Reticulated Giraffe', plural: 'Giraffes', cost: 2000, appeal: 8, speed: 0.8, size: 1.3, diet: 'hay',
     terrain: { savannah: 0.7, dirt: 0.3 }, foliage: ['acacia'], foliageDensity: 0.1,
-    rock: null, rockDensity: 0, shelter: 'hut', water: false, space: 20, group: [2, 6], compatible: ['zebra', 'elephant'],
+    rock: null, rockDensity: 0, shelter: 'hut', water: false, space: 20, group: [2, 6], compatible: ['zebra', 'elephant', 'rhino'],
     play: 'neck', sound: '♪',
   },
   zebra: {
     name: 'Plains Zebra', plural: 'Zebras', cost: 900, appeal: 6, speed: 1.1, size: 0.9, diet: 'hay',
     terrain: { savannah: 0.8, grass: 0.2 }, foliage: ['acacia', 'tallgrass'], foliageDensity: 0.1,
-    rock: null, rockDensity: 0, shelter: null, water: true, space: 10, group: [3, 12], compatible: ['giraffe', 'elephant'],
+    rock: null, rockDensity: 0, shelter: null, water: true, space: 10, group: [3, 12], compatible: ['giraffe', 'elephant', 'rhino'],
     play: 'buck', sound: 'Hee-haw!',
   },
   gorilla: {
@@ -110,6 +113,54 @@ const SPECIES = {
     terrain: { snow: 0.6, water: 0.4 }, foliage: [], foliageDensity: 0,
     rock: 'icerock', rockDensity: 0.06, shelter: 'icecave', water: true, swims: true, space: 5, group: [5, 20], compatible: [],
     play: 'slide', sound: 'Squawk!',
+  },
+  cheetah: {
+    name: 'Cheetah', plural: 'Cheetahs', cost: 1700, appeal: 9, speed: 1.4, size: 0.95, diet: 'meat',
+    terrain: { savannah: 0.8, dirt: 0.2 }, foliage: ['acacia', 'tallgrass'], foliageDensity: 0.08,
+    rock: 'rock', rockDensity: 0.03, shelter: null, water: false, space: 18, group: [1, 4], compatible: [],
+    play: 'pounce', sound: 'Chirp!',
+  },
+  rhino: {
+    name: 'Black Rhinoceros', plural: 'Rhinos', cost: 2600, appeal: 9, speed: 0.6, size: 1.35, diet: 'hay',
+    terrain: { savannah: 0.6, dirt: 0.4 }, foliage: ['acacia', 'tallgrass'], foliageDensity: 0.06,
+    rock: null, rockDensity: 0, shelter: null, water: true, space: 24, group: [1, 4], compatible: ['zebra', 'giraffe', 'elephant'],
+    play: 'charge', sound: 'Snort!',
+  },
+  hippo: {
+    name: 'Hippopotamus', plural: 'Hippos', cost: 2400, appeal: 9, speed: 0.5, size: 1.3, diet: 'hay',
+    terrain: { water: 0.4, dirt: 0.3, grass: 0.3 }, foliage: ['tallgrass', 'palm'], foliageDensity: 0.06,
+    rock: null, rockDensity: 0, shelter: null, water: true, swims: true, space: 22, group: [2, 6], compatible: ['flamingo'],
+    play: 'yawn', sound: 'HONK!',
+  },
+  flamingo: {
+    name: 'Greater Flamingo', plural: 'Flamingos', cost: 600, appeal: 6, speed: 0.6, size: 0.9, diet: 'fish',
+    terrain: { water: 0.4, sand: 0.3, grass: 0.3 }, foliage: ['tallgrass'], foliageDensity: 0.05,
+    rock: null, rockDensity: 0, shelter: null, water: true, swims: true, space: 4, group: [6, 24], compatible: ['hippo'],
+    play: 'flap', sound: 'Honk honk!',
+  },
+  polarbear: {
+    name: 'Polar Bear', plural: 'Polar Bears', cost: 2500, appeal: 10, speed: 0.7, size: 1.25, diet: 'fish',
+    terrain: { snow: 0.6, water: 0.4 }, foliage: [], foliageDensity: 0,
+    rock: 'icerock', rockDensity: 0.05, shelter: 'icecave', water: true, swims: true, space: 20, group: [1, 3], compatible: [],
+    play: 'stand', sound: 'ROAR!',
+  },
+  panda: {
+    name: 'Giant Panda', plural: 'Giant Pandas', cost: 3500, appeal: 10, speed: 0.5, size: 1, diet: 'bamboo',
+    terrain: { grass: 0.5, rainforest: 0.3, dirt: 0.2 }, foliage: ['bamboo', 'pine'], foliageDensity: 0.25,
+    rock: 'rock', rockDensity: 0.03, shelter: 'rockcave', water: true, space: 16, group: [1, 2], compatible: [],
+    play: 'roll', sound: 'Bleat!',
+  },
+  kangaroo: {
+    name: 'Red Kangaroo', plural: 'Kangaroos', cost: 1100, appeal: 7, speed: 1.2, size: 1, diet: 'hay',
+    terrain: { sand: 0.4, dirt: 0.3, grass: 0.3 }, foliage: ['eucalyptus', 'bush'], foliageDensity: 0.08,
+    rock: 'rock', rockDensity: 0.02, shelter: null, water: false, space: 12, group: [3, 10], compatible: [],
+    play: 'hop', sound: 'Boing!',
+  },
+  camel: {
+    name: 'Dromedary Camel', plural: 'Camels', cost: 1200, appeal: 6, speed: 0.7, size: 1.2, diet: 'hay',
+    terrain: { sand: 0.8, dirt: 0.2 }, foliage: ['cactus'], foliageDensity: 0.05,
+    rock: 'rock', rockDensity: 0.03, shelter: 'hut', water: false, space: 16, group: [2, 6], compatible: [],
+    play: 'spit', sound: 'Hrrmph!',
   },
 };
 
