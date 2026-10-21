@@ -66,11 +66,23 @@ function newGame() {
 
 function freshMonth() { return { admissions: 0, sales: 0, donations: 0, construction: 0, animals: 0, salaries: 0, upkeep: 0, guests: 0 }; }
 
+// Tiles covered by an object; big objects take a 2x2 footprint from (x, y).
+function footprint(type, x, y) {
+  const n = OBJECTS[type].size || 1, out = [];
+  for (let dy = 0; dy < n; dy++) for (let dx = 0; dx < n; dx++) out.push([x + dx, y + dy]);
+  return out;
+}
+
 function addObject(type, x, y) {
   const o = { id: G.nextId++, type, x, y, v: Math.random() };
   G.objects.set(o.id, o);
-  G.tiles[idx(x, y)].obj = o.id;
+  for (const [fx, fy] of footprint(type, x, y)) G.tiles[idx(fx, fy)].obj = o.id;
   return o;
+}
+
+function removeObject(o) {
+  G.objects.delete(o.id);
+  for (const [fx, fy] of footprint(o.type, o.x, o.y)) if (inMap(fx, fy) && G.tiles[idx(fx, fy)].obj === o.id) G.tiles[idx(fx, fy)].obj = 0;
 }
 function objAt(x, y) { const t = tileAt(x, y); return t && t.obj ? G.objects.get(t.obj) : null; }
 
@@ -99,7 +111,11 @@ function computeExhibits() {
       }
     }
     if (open || hasPath || tiles.length > 700) continue;
-    const ex = { id: G.exhibits.length, key: Math.min(...tiles), tiles, stats: null, evals: {} };
+    const ex = { id: G.exhibits.length, key: Math.min(...tiles), tiles, stats: null, evals: {}, hasGate: false };
+    for (const i of tiles) {
+      const x = i % MAP_W, y = (i / MAP_W) | 0;
+      if (DIRS.some(([dx, dy]) => fenceBetween(x, y, x + dx, y + dy) === 4)) { ex.hasGate = true; break; }
+    }
     for (const i of tiles) G.exMap[i] = ex.id;
     G.exhibits.push(ex);
   }
@@ -124,14 +140,15 @@ function exhibitName(ex) {
 
 function updateExhibitStats() {
   for (const ex of G.exhibits) {
-    const st = { tiles: ex.tiles.length, terrain: {}, objs: {}, foliage: {}, animals: [], bySpecies: {}, dung: 0, food: {}, toys: 0 };
+    const st = { tiles: ex.tiles.length, terrain: {}, objs: {}, foliage: {}, animals: [], bySpecies: {}, dung: 0, food: {}, toys: 0, shelterTiles: [], toyTiles: [] };
     for (const i of ex.tiles) {
       const t = G.tiles[i];
       st.terrain[t.t] = (st.terrain[t.t] || 0) + 1;
       if (t.obj) {
         const o = G.objects.get(t.obj);
         st.objs[o.type] = (st.objs[o.type] || 0) + 1;
-        if (OBJECTS[o.type].cat === 'toy') st.toys++;
+        if (OBJECTS[o.type].cat === 'toy') { st.toys++; st.toyTiles.push(i); }
+        if (OBJECTS[o.type].cat === 'shelter') st.shelterTiles.push(i);
       }
     }
     ex.stats = st;
@@ -260,6 +277,8 @@ function findPath(sx, sy, isGoal, canStep, maxNodes = 4000) {
 
 const stepOnPath = (x, y, nx, ny) => G.tiles[idx(nx, ny)].path && !fenceBetween(x, y, nx, ny);
 const stepOnLand = (x, y, nx, ny) => G.tiles[idx(nx, ny)].t !== 'water';
+// Staff can only cross a fence through a gate.
+const stepStaff = (x, y, nx, ny) => G.tiles[idx(nx, ny)].t !== 'water' && (!fenceBetween(x, y, nx, ny) || fenceBetween(x, y, nx, ny) === 4);
 
 function adjacentToPath(x, y) {
   return DIRS.some(([dx, dy]) => { const t = tileAt(x + dx, y + dy); return t && t.path; });
@@ -302,16 +321,32 @@ function fenceBlocksPath(k, i) {
   return a && b && a.path && b.path;
 }
 
-function placeFenceSegs(segs, type) {
+function placeFenceSegs(segs, type, withGate = false) {
   const todo = segs.filter(([k, i]) => !fenceBlocksPath(k, i) && (k === 'h' ? G.hF : G.vF)[i] !== type);
   if (!todo.length) return false;
   if (!spend(todo.length * FENCES[type].cost)) return false;
   for (const [k, i] of todo) { (k === 'h' ? G.hF : G.vF)[i] = type; (k === 'h' ? G.hC : G.vC)[i] = 100; }
-  Sound.play('fence');
+  if (withGate && type !== 4) addGate(segs);
+  Sound.play(type === 4 ? 'gate' : 'fence');
   const before = G.exhibits.length;
   computeExhibits();
-  if (G.exhibits.length > before) notify('New exhibit built! Add terrain, plants and animals.', 'good');
+  if (G.exhibits.length > before) notify('New exhibit built! Keepers use the gate to get in. Now add terrain, plants and animals.', 'good');
   return true;
+}
+
+// Turn one segment of a new enclosure into a gate, preferably facing a path.
+function addGate(segs) {
+  let best = null, bestD = Infinity;
+  for (const [k, i] of segs) {
+    if (!(k === 'h' ? G.hF : G.vF)[i]) continue;
+    for (const [x, y] of fenceSides(k, i)) {
+      const t = tileAt(x, y);
+      if (!t) continue;
+      const d = t.path ? 0 : Math.abs(x - ENTRANCE.x) + Math.abs(y - ENTRANCE.y) + 100;
+      if (d < bestD) { bestD = d; best = [k, i]; }
+    }
+  }
+  if (best) (best[0] === 'h' ? G.hF : G.vF)[best[1]] = 4;
 }
 
 function rectSegs(x0, y0, x1, y1) {
@@ -322,7 +357,7 @@ function rectSegs(x0, y0, x1, y1) {
   for (let y = y0; y <= y1; y++) segs.push(['v', vIdx(x0, y)], ['v', vIdx(x1 + 1, y)]);
   return segs;
 }
-function placeFenceRect(x0, y0, x1, y1, type) { return placeFenceSegs(rectSegs(x0, y0, x1, y1), type); }
+function placeFenceRect(x0, y0, x1, y1, type) { return placeFenceSegs(rectSegs(x0, y0, x1, y1), type, true); }
 
 // A straight run of fence between two grid corners, along whichever axis the drag mostly follows.
 function lineSegs(x0, y0, x1, y1) {
@@ -364,14 +399,20 @@ function removeFenceAt(fx, fy) {
 }
 
 function canPlaceObject(x, y, type) {
-  const t = tileAt(x, y), def = OBJECTS[type];
-  if (!t) return 'Out of bounds';
-  if (t.obj) return 'Something is already there';
-  if (t.path) return "Can't build on a path";
-  if (t.t === 'water') return "Can't build on water";
+  const def = OBJECTS[type], tiles = footprint(type, x, y);
+  for (const [fx, fy] of tiles) {
+    const t = tileAt(fx, fy);
+    if (!t) return 'Out of bounds';
+    if (t.obj) return 'Something is already there';
+    if (t.path) return "Can't build on a path";
+    if (t.t === 'water') return "Can't build on water";
+  }
   if (def.cat === 'building' || def.cat === 'scenery' || def.cat === 'ride') {
-    if (G.exMap[idx(x, y)] >= 0) return 'Guest buildings go outside exhibits';
-    if (!adjacentToPath(x, y)) return 'Must be next to a path';
+    if (tiles.some(([fx, fy]) => G.exMap[idx(fx, fy)] >= 0)) return 'Guest buildings go outside exhibits';
+    if (!tiles.some(([fx, fy]) => adjacentToPath(fx, fy))) return 'Must be next to a path';
+  } else if (tiles.length > 1) {
+    const ex = new Set(tiles.map(([fx, fy]) => G.exMap[idx(fx, fy)]));
+    if (ex.size > 1) return 'It must fit inside one exhibit';
   }
   return null;
 }
@@ -419,8 +460,7 @@ function bulldoze(x, y, fx = null, fy = null) {
   if (t.obj || t.path) Sound.play('demolish');
   if (t.obj) {
     const o = G.objects.get(t.obj);
-    G.objects.delete(t.obj);
-    t.obj = 0;
+    removeObject(o);
     G.money += Math.round(OBJECTS[o.type].cost * 0.5);
     updateExhibitStats();
     return true;

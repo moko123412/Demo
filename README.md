@@ -30,6 +30,10 @@ Zookeepers recapture escaped animals.
 On phones and tablets: tap a tile to build, drag one finger to paint paths, terrain, plants or a fence area, drag a shop
 or animal to position it and lift to place, and use two fingers to move and zoom the map.
 
+Exhibits need a gate so keepers can get in; new fences come with one facing the path, and you can add more with the
+Exhibit Gate piece. Gates swing open as keepers walk through. Rides, caves, shelters and the gift shop take up 2×2 tiles.
+Animals go into their shelter to sleep, play with toys and drink from ponds, and guests sit on benches and take photos.
+
 Happy animals with a mate become pregnant and give birth a few days later; the baby stays near its mother.
 
 Click any animal, guest, staff member or exhibit to see what they're thinking. An exhibit's panel lists its

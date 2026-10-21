@@ -64,7 +64,7 @@ function fenceUp(e) {
 function toggleFencePiece([k, i], placeOnly = false) {
   const F = k === 'h' ? G.hF : G.vF;
   beginUndo();
-  if (F[i] && !placeOnly) { F[i] = 0; (k === 'h' ? G.hC : G.vC)[i] = 0; computeExhibits(); Sound.play('demolish'); }
+  if (F[i] && F[i] === UI.tool.key && !placeOnly) { F[i] = 0; (k === 'h' ? G.hC : G.vC)[i] = 0; computeExhibits(); Sound.play('demolish'); }
   else placeFenceSegs([[k, i]], UI.tool.key);
   endUndo();
   buzz();
@@ -107,7 +107,7 @@ function areaSegs() {
 function buildFenceArea() {
   if (!UI.fenceArea.size) return;
   beginUndo();
-  const ok = placeFenceSegs(areaSegs(), UI.tool.key);
+  const ok = placeFenceSegs(areaSegs(), UI.tool.key, true);
   endUndo();
   if (ok) { UI.fenceArea.clear(); buzz(); }
 }

@@ -340,6 +340,7 @@ function renderTerrain() {
     terrainCanvas.height = (MAP_W + MAP_H) * TH / 2 + 2;
   }
   const c = terrainCanvas.getContext('2d');
+  shoreEdges.length = 0;
   const pat = {};
   for (const k in texCanvases) pat[k] = c.createPattern(texCanvases[k], 'repeat');
   // map the cobble texture onto the iso grid: 128px of texture = 2 tiles
@@ -423,6 +424,7 @@ function renderTerrain() {
           if (!nb || nb.t === 'water') return;
           const [a, b] = edgeOf(corners, d);
           line(c, a[0], a[1], b[0], b[1], 'rgba(235,246,250,0.75)', 2.2);
+          shoreEdges.push([a[0] - TERR_OFF_X, a[1], b[0] - TERR_OFF_X, b[1], hash2(x, y, d) * 6.28, px - TERR_OFF_X, py]);
           line(c, a[0] + (px - a[0]) * 0.12, a[1] + (py - a[1]) * 0.12, b[0] + (px - b[0]) * 0.12, b[1] + (py - b[1]) * 0.12, 'rgba(255,255,255,0.25)', 1.2);
         });
       }
@@ -537,9 +539,10 @@ function lightSources() {
   const out = [];
   for (const o of G.objects.values()) {
     const def = OBJECTS[o.type];
-    if (def.light) out.push([o.x + 0.5, o.y + 0.5, 34, 85]);
-    else if (def.cat === 'ride') out.push([o.x + 0.5, o.y + 0.5, 30, 95]);
-    else if (def.cat === 'building' && def.icon) out.push([o.x + 0.5, o.y + 0.5, 12, 55]);
+    const n = (def.size || 1) / 2;
+    if (def.light) out.push([o.x + n, o.y + n, 34, 85]);
+    else if (def.cat === 'ride') out.push([o.x + n, o.y + n, 50, 140]);
+    else if (def.cat === 'building' && def.icon) out.push([o.x + n, o.y + n, 12 * n * 2, 55 * n * 2]);
   }
   out.push([ENTRANCE.x + 0.5, ENTRANCE.y + 0.5, 40, 80]);
   return out;
@@ -656,8 +659,9 @@ function drawVignette(c) {
 }
 
 // ---------- fences ----------
-function drawFence(c, type, x1, y1, x2, y2, cond = 100) {
+function drawFence(c, type, x1, y1, x2, y2, cond = 100, open = 0) {
   const vertical = (x2 - x1) * (y2 - y1) > 0; // runs down-right on screen
+  if (type === 4) { drawGate(c, x1, y1, x2, y2, open, cond); return; }
   const wear = cond < 60 ? (60 - cond) / 60 : 0;
   if (wear > 0) {
     // worn fences sag and crack
@@ -673,6 +677,27 @@ function drawFence(c, type, x1, y1, x2, y2, cond = 100) {
     return;
   }
   drawFenceBody(c, type, x1, y1, x2, y2, vertical, 0);
+}
+
+// A gate: two posts with a crossbar and a pair of wooden doors that swing
+// open (seen foreshortened) when a keeper comes through.
+function drawGate(c, x1, y1, x2, y2, open, cond) {
+  const h = 21, wood = tint('#8a5d30', cond < 50 ? -0.2 : 0), dark = '#4e3218';
+  const mx = (x1 + x2) / 2, my = (y1 + y2) / 2;
+  const panel = (ax, ay, bx, by) => {
+    const f = 1 - open * 0.82, ex = ax + (bx - ax) * f, ey = ay + (by - ay) * f;
+    poly(c, [[ax, ay - 1], [ex, ey - 1 - open * 3], [ex, ey - h * 0.82 - open * 3], [ax, ay - h * 0.82]], wood, dark, 0.8);
+    for (let k = 1; k < 4; k++) { const g = k / 4; line(c, ax + (ex - ax) * g, ay + (ey - ay) * g - 1, ax + (ex - ax) * g, ay + (ey - ay) * g - h * 0.8, 'rgba(0,0,0,0.22)', 0.6); }
+    line(c, ax, ay - 2, ex, ey - h * 0.78 - open * 3, 'rgba(60,35,15,0.7)', 1);
+  };
+  panel(x1, y1, mx, my);
+  panel(x2, y2, mx, my);
+  for (const [px, py] of [[x1, y1], [x2, y2]]) {
+    line(c, px, py + 1, px, py - h - 3, dark, 3.4);
+    line(c, px - 0.8, py, px - 0.8, py - h - 3, '#7a5530', 1.2);
+    ell(c, px, py - h - 4, 2.4, 1.3, '#5e3a1c');
+  }
+  line(c, x1, y1 - h - 2, x2, y2 - h - 2, dark, 2.4);
 }
 
 function drawFenceBody(c, type, x1, y1, x2, y2, vertical, wear) {
@@ -709,12 +734,17 @@ function drawFenceBody(c, type, x1, y1, x2, y2, vertical, wear) {
   }
 }
 
+// Rides keep turning while the zoo has visitors in the daytime, and always with riders.
+function rideRunning(obj) { return !!obj && (obj.riders > 0 || (G.guests.length > 0 && darkness() < 0.6)); }
+
 // ---------- objects ----------
 function drawObjectSprite(c, type, v, px, py, obj = null) {
   const s = 0.85 + v * 0.3;
   SHADE = true;
   c.save();
   c.translate(px, py);
+  if (OBJECTS[type].size === 2) c.scale(1.75, 1.75);
+  else if (OBJECTS[type].cat === 'foliage' && type !== 'tallgrass' && type !== 'fern' && type !== 'bush') c.scale(1.3, 1.3);
   if (OBJECTS[type].cat === 'foliage') {
     // trees lean gently in the wind
     const sway = Math.sin(performance.now() / 1000 * 1.3 + v * 20) * (type === 'tallgrass' || type === 'bamboo' ? 0.07 : 0.025);
@@ -855,10 +885,22 @@ function drawObjectSprite(c, type, v, px, py, obj = null) {
       pyramidRoof(c, 0, 0, 27, 14, 17, '#d6b25e', '#bf9a45');
       break;
     case 'ball': {
-      shadow(c, 0, 0, 8, 3);
-      const b = Math.abs(Math.sin(performance.now() / 400 + v * 6)) * 2;
-      circ(c, 0, -8 - b, 8, '#e04848');
-      c.beginPath(); c.arc(0, -8 - b, 8, -0.3, 1.3); c.strokeStyle = '#fff'; c.lineWidth = 2.5; c.stroke();
+      let ox = 0, oy = 0, spin = 0;
+      if (obj) {
+        // knocked by an animal: roll, slow down, stay within the tile
+        const dt = 1 / 60;
+        obj.bx = clamp((obj.bx || 0) + (obj.kvx || 0) * dt, -18, 18);
+        obj.by = clamp((obj.by || 0) + (obj.kvy || 0) * dt, -7, 7);
+        obj.kvx = (obj.kvx || 0) * 0.97; obj.kvy = (obj.kvy || 0) * 0.97;
+        if (Math.abs(obj.bx) >= 18) obj.kvx = -obj.kvx * 0.5;
+        obj.spin = (obj.spin || 0) + (obj.kvx || 0) * dt / 8;
+        ox = obj.bx; oy = obj.by; spin = obj.spin;
+      }
+      shadow(c, ox, oy, 8, 3);
+      const b = Math.abs(Math.sin(performance.now() / 400 + v * 6)) * (obj && Math.abs(obj.kvx || 0) > 5 ? 4 : 1);
+      circ(c, ox, oy - 8 - b, 8, '#e04848');
+      c.beginPath(); c.arc(ox, oy - 8 - b, 8, -0.3 + spin, 1.3 + spin); c.strokeStyle = '#fff'; c.lineWidth = 2.5; c.stroke();
+      c.translate(ox, oy);
       circ(c, -3, -11 - b, 2, 'rgba(255,255,255,0.6)');
       break;
     }
@@ -1027,7 +1069,7 @@ function drawObjectSprite(c, type, v, px, py, obj = null) {
       break;
     }
     case 'carousel': {
-      const t = performance.now() / 1000, run = obj && obj.riders > 0, rot = run ? t * 1.2 : (v * 6);
+      const t = performance.now() / 1000, run = rideRunning(obj), rot = (v * 6) + t * (obj && obj.riders > 0 ? 1.2 : run ? 0.5 : 0);
       shadow(c, 0, 4, 30, 13);
       ell(c, 0, 0, 27, 12, '#d9c9a3');
       ell(c, 0, -3, 25, 11, '#b33a2e');
@@ -1061,7 +1103,7 @@ function drawObjectSprite(c, type, v, px, py, obj = null) {
     }
     case 'swings': {
       const t = performance.now() / 1000;
-      if (obj) obj._spin = (obj._spin || 0) + (((obj.riders > 0) ? 1 : 0) - (obj._spin || 0)) * 0.02;
+      if (obj) obj._spin = (obj._spin || 0) + ((obj.riders > 0 ? 1 : rideRunning(obj) ? 0.45 : 0) - (obj._spin || 0)) * 0.02;
       const sp = obj ? obj._spin : 0, rot = t * 1.6 * sp + v * 6;
       shadow(c, 0, 4, 30, 13);
       ell(c, 0, 0, 14, 6, '#9aa3ab');
@@ -1084,7 +1126,7 @@ function drawObjectSprite(c, type, v, px, py, obj = null) {
       break;
     }
     case 'ferris': {
-      const t = performance.now() / 1000, run = obj && obj.riders > 0, rot = run ? t * 0.35 : v * 6, cy = -46, R = 34;
+      const t = performance.now() / 1000, run = rideRunning(obj), rot = v * 6 + t * (run ? 0.25 : 0), cy = -46, R = 34;
       shadow(c, 0, 4, 30, 12);
       c.save(); c.translate(0, 0); isoBox(c, 0, 0, 16, 4, '#9aa3ab', '#7a8288', '#6a7278'); c.restore();
       line(c, -16, -2, 0, cy, '#8a929a', 3); line(c, 16, -2, 0, cy, '#8a929a', 3);
@@ -1217,6 +1259,13 @@ function drawPerson(c, px, py, o) {
 }
 
 function drawGuest(c, g, px, py) {
+  if (g.flashT > 0) {
+    const r = 10 * (g.flashT / 0.3);
+    c.save();
+    c.globalCompositeOperation = 'lighter';
+    ell(c, px + 4 * g.face, py - 18, r, r, 'rgba(255,255,240,0.8)');
+    c.restore();
+  }
   drawPerson(c, px, py, {
     kid: g.kid, face: g.face, balloon: g.balloon, moving: g.path.length > 0, t: g.anim, sitting: g.state === 'sit',
     pants: g.pants, shirt: g.shirt, skin: g.skin, hair: g.hair, carry: g.carry, hat: g.hat, plush: g.souvenir === 'plush',
@@ -1229,6 +1278,16 @@ function drawStaff(c, s, px, py) {
     shirt: keeper ? '#b59b5c' : '#3a6fb0', pants: keeper ? '#6b5a3a' : '#2a4f80', skin: '#e0ac69', hair: '#5a3a1a',
     hat: keeper ? 'safari' : 'cap', tool: keeper ? 'bucket' : 'broom',
   });
+}
+
+// How far each gate is open: it swings open while a staff member is close by.
+const gateState = {};
+function gateOpen(key, mx, my) {
+  const near = G.staff.some(s => Math.abs(s.x - mx) + Math.abs(s.y - my) < 1.3);
+  const prev = gateState[key] || 0, next = clamp(prev + (near ? 0.05 : -0.03), 0, 1);
+  if (prev === 0 && next > 0) { const p = tileToScreen(mx, my); if (p.x > 0 && p.x < viewW && p.y > 0 && p.y < viewH) Sound.play('gate'); }
+  gateState[key] = next;
+  return next * next * (3 - 2 * next);
 }
 
 // ---------- main render ----------
@@ -1275,23 +1334,30 @@ function render(now) {
 
   drawList.length = 0;
   for (const o of G.objects.values()) {
-    const px = isoX(o.x + 0.5, o.y + 0.5), py = isoY(o.x + 0.5, o.y + 0.5);
-    if (vis(px, py)) drawList.push({ d: o.x + o.y + 1, k: 0, o, px, py });
+    const n = OBJECTS[o.type].size || 1, px = isoX(o.x + n / 2, o.y + n / 2), py = isoY(o.x + n / 2, o.y + n / 2);
+    if (vis(px, py)) drawList.push({ d: o.x + o.y + n, k: 0, o, px, py });
   }
   for (let y = 0; y <= MAP_H; y++) for (let x = 0; x < MAP_W; x++) {
     const v = G.hF[hIdx(x, y)];
     if (!v) continue;
     const px = isoX(x + 0.5, y), py = isoY(x + 0.5, y);
-    if (vis(px, py)) drawList.push({ d: x + y + 0.5, k: 1, o: v, c: G.hC[hIdx(x, y)], x1: isoX(x, y), y1: isoY(x, y), x2: isoX(x + 1, y), y2: isoY(x + 1, y), px, py });
+    if (vis(px, py)) drawList.push({ d: x + y + 0.5, k: 1, o: v, c: G.hC[hIdx(x, y)], open: v === 4 ? gateOpen('h' + hIdx(x, y), x + 0.5, y) : 0, x1: isoX(x, y), y1: isoY(x, y), x2: isoX(x + 1, y), y2: isoY(x + 1, y), px, py });
   }
   for (let y = 0; y < MAP_H; y++) for (let x = 0; x <= MAP_W; x++) {
     const v = G.vF[vIdx(x, y)];
     if (!v) continue;
     const px = isoX(x, y + 0.5), py = isoY(x, y + 0.5);
-    if (vis(px, py)) drawList.push({ d: x + y + 0.5, k: 1, o: v, c: G.vC[vIdx(x, y)], x1: isoX(x, y), y1: isoY(x, y), x2: isoX(x, y + 1), y2: isoY(x, y + 1), px, py });
+    if (vis(px, py)) drawList.push({ d: x + y + 0.5, k: 1, o: v, c: G.vC[vIdx(x, y)], open: v === 4 ? gateOpen('v' + vIdx(x, y), x, y + 0.5) : 0, x1: isoX(x, y), y1: isoY(x, y), x2: isoX(x, y + 1), y2: isoY(x, y + 1), px, py });
   }
-  for (const a of G.animals) { const px = isoX(a.x, a.y), py = isoY(a.x, a.y); if (vis(px, py)) drawList.push({ d: a.x + a.y, k: 2, o: a, px, py }); }
-  for (const g of G.guests) { if (g.state === 'ride') continue; const px = isoX(g.x, g.y), py = isoY(g.x, g.y); if (vis(px, py)) drawList.push({ d: g.x + g.y, k: 3, o: g, px, py }); }
+  for (const a of G.animals) { if (a.state === 'shelter') continue; const px = isoX(a.x, a.y), py = isoY(a.x, a.y); if (vis(px, py)) drawList.push({ d: a.x + a.y, k: 2, o: a, px, py }); }
+  for (const g of G.guests) {
+    if (g.state === 'ride') continue;
+    let gx = g.x, gy = g.y;
+    const seat = g.state === 'sit' && G.objects.get(g.useObj);
+    if (seat) { gx += (seat.x + 0.5 - gx) * 0.72; gy += (seat.y + 0.5 - gy) * 0.72; }
+    const px = isoX(gx, gy), py = isoY(gx, gy);
+    if (vis(px, py)) drawList.push({ d: gx + gy + (seat ? 0.05 : 0), k: 3, o: g, px, py });
+  }
   for (const s of G.staff) { const px = isoX(s.x, s.y), py = isoY(s.x, s.y); if (vis(px, py)) drawList.push({ d: s.x + s.y, k: 4, o: s, px, py }); }
   drawList.push({ d: ENTRANCE.x + ENTRANCE.y + 1.3, k: 5, px: isoX(ENTRANCE.x + 0.5, ENTRANCE.y + 0.5), py: isoY(ENTRANCE.x + 0.5, ENTRANCE.y + 0.5) });
   drawList.sort((a, b) => a.d - b.d);
@@ -1304,7 +1370,7 @@ function render(now) {
     }
     switch (it.k) {
       case 0: drawObjectSprite(ctx, it.o.type, it.o.v, it.px, it.py, it.o); break;
-      case 1: drawFence(ctx, it.o, it.x1, it.y1, it.x2, it.y2, it.c); break;
+      case 1: drawFence(ctx, it.o, it.x1, it.y1, it.x2, it.y2, it.c, it.open); break;
       case 2: drawAnimal(ctx, it.o, it.px, it.py); break;
       case 3: drawGuest(ctx, it.o, it.px, it.py); break;
       case 4: drawStaff(ctx, it.o, it.px, it.py); break;
@@ -1367,16 +1433,17 @@ function drawBubble(c, x, y, icon) {
   c.textBaseline = 'alphabetic';
 }
 
-let waterPattern = null;
+let waterPattern = null, waterPattern2 = null;
+const shoreEdges = [];
 function drawWaterGlints(c, now, vis) {
   const t = now / 1000;
   // drifting ripples over every visible water tile
-  if (!waterPattern && texCanvases) waterPattern = c.createPattern(texCanvases.water, 'repeat');
+  if (!waterPattern && texCanvases) { waterPattern = c.createPattern(texCanvases.water, 'repeat'); waterPattern2 = c.createPattern(texCanvases.water, 'repeat'); }
   if (waterPattern && waterPattern.setTransform) {
-    waterPattern.setTransform(new DOMMatrix([1, 0, 0, 1, (t * 9) % TEX, (t * 4) % TEX]));
+    // two layers of ripples drifting in different directions read as flowing water
+    waterPattern.setTransform(new DOMMatrix([1, 0, 0, 1, (t * 14) % TEX, (t * 6) % TEX]));
+    waterPattern2.setTransform(new DOMMatrix([1.6, 0.3, -0.3, 1.6, (-t * 9) % (TEX * 1.6), (t * 11) % (TEX * 1.6)]));
     c.save();
-    c.globalAlpha = 0.45;
-    c.fillStyle = waterPattern;
     c.beginPath();
     for (let y = 0; y < MAP_H; y++) for (let x = 0; x < MAP_W; x++) {
       if (G.tiles[idx(x, y)].t !== 'water') continue;
@@ -1384,8 +1451,19 @@ function drawWaterGlints(c, now, vis) {
       if (!vis(px, py)) continue;
       c.moveTo(px, py - TH / 2); c.lineTo(px + TW / 2, py); c.lineTo(px, py + TH / 2); c.lineTo(px - TW / 2, py); c.closePath();
     }
+    c.globalAlpha = 0.6;
+    c.fillStyle = waterPattern;
+    c.fill();
+    c.globalAlpha = 0.35;
+    c.fillStyle = waterPattern2;
     c.fill();
     c.restore();
+  }
+  // foam lapping at the shore
+  for (const [ax, ay, bx, by, ph, cx, cy] of shoreEdges) {
+    if (!vis(ax, ay)) continue;
+    const w = 0.5 + 0.5 * Math.sin(t * 1.8 + ph), k = 0.06 + w * 0.12;
+    line(c, ax + (cx - ax) * k, ay + (cy - ay) * k, bx + (cx - bx) * k, by + (cy - by) * k, `rgba(255,255,255,${(0.25 + w * 0.4).toFixed(2)})`, 1.2 + w);
   }
   c.fillStyle = 'rgba(255,255,255,0.35)';
   for (let y = 0; y < MAP_H; y++) for (let x = 0; x < MAP_W; x++) {
@@ -1470,9 +1548,10 @@ function drawToolPreview(c) {
       const err = canPlaceObject(h.x, h.y, tool.key);
       UI.tip = err || money(OBJECTS[tool.key].cost);
       UI.tipBad = !!err;
-      outlineTile(c, h.x, h.y, err ? '#ff5050' : '#7dff7d', err ? 'rgba(255,60,60,0.25)' : 'rgba(120,255,120,0.2)');
+      for (const [fx, fy] of footprint(tool.key, h.x, h.y)) outlineTile(c, fx, fy, err ? '#ff5050' : '#7dff7d', err ? 'rgba(255,60,60,0.25)' : 'rgba(120,255,120,0.2)');
       c.globalAlpha = 0.65;
-      drawObjectSprite(c, tool.key, 0.5, isoX(h.x + 0.5, h.y + 0.5), isoY(h.x + 0.5, h.y + 0.5), null);
+      const n = OBJECTS[tool.key].size || 1;
+      drawObjectSprite(c, tool.key, 0.5, isoX(h.x + n / 2, h.y + n / 2), isoY(h.x + n / 2, h.y + n / 2), null);
       c.globalAlpha = 1;
       break;
     }
@@ -1524,8 +1603,9 @@ function drawThumb(cv, kind, key) {
       drawFence(c, +key, 0, -13, 26, 0);
       break;
     case 'object': {
-      const k = { ferris: 0.5, swings: 0.62, carousel: 0.66, playground: 0.75, giftshop: 0.68 }[key] ||
-        (['rockcave', 'icecave', 'hut', 'burger', 'drinks', 'restroom', 'acacia', 'palm', 'eucalyptus', 'pizza', 'gardenfountain'].includes(key) ? 0.72 : 0.95);
+      const big = OBJECTS[key].size === 2 ? 1.75 : OBJECTS[key].cat === 'foliage' && !['tallgrass', 'fern', 'bush'].includes(key) ? 1.3 : 1;
+      const k = ({ ferris: 0.5, swings: 0.62, carousel: 0.66, playground: 0.75, giftshop: 0.68 }[key] ||
+        (['rockcave', 'icecave', 'hut', 'burger', 'drinks', 'restroom', 'acacia', 'palm', 'eucalyptus', 'pizza', 'gardenfountain'].includes(key) ? 0.72 : 0.95)) / big;
       if (key === 'ferris' || key === 'swings') c.translate(0, 6);
       c.scale(k, k);
       drawObjectSprite(c, key, 0.5, 0, 0);

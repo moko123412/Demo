@@ -39,7 +39,9 @@ function paletteItems(cat) {
   switch (cat) {
     case 'terrain': return TERRAIN_ORDER.map(k => ({ kind: 'terrain', key: k, name: TERRAIN[k].name, cost: TERRAIN[k].cost, desc: 'Click and drag to paint. Each species has favourite terrain.' }));
     case 'path': return [{ kind: 'path', key: 'path', name: 'Paved Path', cost: PATH_COST, desc: 'Click and drag to lay path. Guests only walk on paths, so connect everything back to the entrance.' }];
-    case 'fence': return Object.keys(FENCES).map(k => ({ kind: 'fence', key: +k, name: FENCES[k].name, cost: FENCES[k].cost, desc: 'Paint the tiles you want inside the exhibit, then press Build fence and it goes up around them. Use Single pieces to add or remove one side at a time. A closed fence with no path inside becomes an exhibit.' }));
+    case 'fence': return Object.keys(FENCES).map(k => ({ kind: 'fence', key: +k, name: FENCES[k].name, cost: FENCES[k].cost,
+      desc: FENCES[k].gate ? 'A door in the fence that keepers use to get in and out of the exhibit. Tap a tile, then the side where the gate should go. New fences come with a gate already.'
+        : 'Paint the tiles you want inside the exhibit, then press Build fence and it goes up around them, with a gate facing the path. Use Single pieces to add or remove one side at a time. A closed fence with no path inside becomes an exhibit.' }));
     case 'animal': return Object.keys(SPECIES).filter(k => speciesAllowed(k)).map(k => ({ kind: 'animal', key: k, name: SPECIES[k].name, cost: SPECIES[k].cost, desc: speciesBlurb(k) }));
     case 'plants': return objs(o => o.cat === 'foliage');
     case 'exhibit': return objs(o => o.cat === 'rock' || o.cat === 'shelter' || o.cat === 'toy');
@@ -180,6 +182,7 @@ const UI = {
         grid.querySelectorAll('.item').forEach(x => x.classList.remove('on'));
         b.classList.add('on');
         this.tool = { ...this.tool, mode: it.kind, key: it.key };
+        if (it.kind === 'fence' && FENCES[it.key].gate && this.tool.fenceMode !== 'pieces') document.querySelector('[data-fmode="pieces"]').click();
         $('#palette .desc').textContent = it.desc;
       });
       b.addEventListener('pointerenter', () => { $('#palette .desc').textContent = it.desc; });
@@ -354,6 +357,7 @@ const UI = {
     const terr = Object.keys(st.terrain).sort((a, b) => st.terrain[b] - st.terrain[a])
       .map(t => `<span class="chip" style="--c:${TERRAIN[t].color}">${TERRAIN[t].name} ${Math.round(st.terrain[t] / st.tiles * 100)}%</span>`).join('');
     h += `<div class="chips">${terr}</div>`;
+    if (!ex.hasGate) h += '<p class="bad">⚠️ No gate: keepers can\'t get in to feed the animals. Add an Exhibit Gate.</p>';
     const clean = Math.max(0, 100 - st.dung / st.tiles * 400);
     h += this.bar('Cleanliness', clean);
     for (const spk in ex.evals) {

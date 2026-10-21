@@ -141,6 +141,21 @@ function updateAnimal(a, dt) {
         a.timer = 6;
       }
       break;
+    case 'toShelter':
+      if (moveAlong(a, speed, dt)) { a.state = 'shelter'; a.timer = darkness() > 0.5 ? rand(18, 30) : rand(8, 16); think(a, '💤', null, 3); }
+      break;
+    case 'toWater':
+      if (moveAlong(a, speed, dt)) { a.state = 'drink'; a.timer = rand(3, 5); }
+      break;
+    case 'toToy':
+      if (moveAlong(a, speed, dt)) {
+        a.state = 'play';
+        a.timer = rand(3, 5);
+        a.anim = 0;
+        const toy = objAt(Math.floor(a.x), Math.floor(a.y)) || nearObject(a.x, a.y, 'ball', 1) || nearObject(a.x, a.y, 'log', 1);
+        if (toy && toy.type === 'ball') { toy.kvx = (toy.kvx || 0) + a.face * rand(30, 60); toy.kvy = (toy.kvy || 0) + rand(-20, 20); }
+      }
+      break;
     case 'eat': {
       const f = G.food.find(f => f.diet === sp.diet && Math.hypot(f.x - a.x, f.y - a.y) < 1.2 && f.amount > 0);
       if (!f) { a.state = 'idle'; a.timer = 1; break; }
@@ -151,7 +166,7 @@ function updateAnimal(a, dt) {
       if (a.hunger >= 98 || a.timer <= 0) { a.state = 'idle'; a.timer = rand(1, 3); }
       break;
     }
-    case 'play': case 'rest': case 'idle':
+    case 'play': case 'rest': case 'idle': case 'shelter': case 'drink':
       a.timer -= dt;
       if (a.state === 'play') a.anim += dt * 6;
       if (a.timer <= 0) animalDecide(a, ex);
@@ -175,7 +190,24 @@ function animalDecide(a, ex) {
       if (path) { a.path = path; a.state = 'toFood'; return; }
     }
   }
-  const r = Math.random();
+  const r = Math.random(), st = ex && ex.stats;
+  const goTo = (isGoal, state) => {
+    const path = findPath(Math.floor(a.x), Math.floor(a.y), isGoal, animalStepper(a, ex), 900);
+    if (!path) return false;
+    a.path = path; a.state = state; a.timer = 0;
+    if (!path.length) moveAlong(a, 1, 0);
+    return true;
+  };
+  // play with a toy if there is one
+  if (a.happy > 60 && r < 0.3 && st && st.toyTiles.length && Math.random() < 0.6) {
+    const tiles = new Set(st.toyTiles);
+    if (goTo((x, y) => tiles.has(idx(x, y)), 'toToy')) return;
+  }
+  // a drink from the pond
+  if (st && st.terrain.water && !sp.swims && r > 0.85) {
+    const wet = (x, y) => DIRS.some(([dx, dy]) => { const t = tileAt(x + dx, y + dy); return t && t.t === 'water'; });
+    if (goTo((x, y) => G.tiles[idx(x, y)].t !== 'water' && wet(x, y), 'toWater')) return;
+  }
   if (a.happy > 70 && r < 0.3) {
     a.state = 'play';
     a.timer = rand(2.5, 4);
@@ -189,8 +221,16 @@ function animalDecide(a, ex) {
     a.timer = 1;
     return;
   }
-  if (darkness() > 0.5 && r < 0.75) { a.state = 'rest'; a.timer = rand(8, 16); return; }
-  if (r < 0.25) { a.state = 'rest'; a.timer = rand(5, 10); return; }
+  if ((darkness() > 0.5 && r < 0.75) || r < 0.25) {
+    // tired animals head into their shelter if they have one
+    if (st && st.shelterTiles.length && Math.random() < (darkness() > 0.5 ? 0.8 : 0.45)) {
+      const tiles = new Set(st.shelterTiles);
+      if (goTo((x, y) => tiles.has(idx(x, y)), 'toShelter')) return;
+    }
+    a.state = 'rest';
+    a.timer = darkness() > 0.5 ? rand(8, 16) : rand(5, 10);
+    return;
+  }
   const mom = a.baby && a.mom && G.animals.find(m => m.id === a.mom);
   if (mom && exhibitAt(mom.x, mom.y) === ex) {
     const mx = Math.floor(mom.x), my = Math.floor(mom.y);
@@ -327,6 +367,7 @@ function guestSpeed(g) {
 function updateGuest(g, dt) {
   g.timeIn += dt;
   g.thoughtT -= dt;
+  if (g.flashT > 0) g.flashT -= dt;
   g.needCooldown -= dt;
   g.hunger -= dt * 0.3; g.thirst -= dt * 0.4; g.bladder -= dt * 0.28;
   g.energy -= dt * (g.elder ? 0.3 : 0.2);
@@ -593,7 +634,7 @@ function viewExhibit(g, ex) {
     value += v;
     avg += a.happy;
     if (a.state === 'play') player = a;
-    if (a.state === 'rest') sleeping++;
+    if (a.state === 'rest' || a.state === 'shelter') sleeping++;
     if (a.baby) baby = a;
     if (v > bestV) { bestV = v; bestSp = a.sp; }
   }
@@ -619,6 +660,7 @@ function viewExhibit(g, ex) {
   }
   g.happy = clamp(g.happy + gain, 0, 100);
   g.fun = clamp(g.fun + Math.max(0, gain) * 1.1, 0, 100);
+  if (gain > 8 && Math.random() < 0.3) { g.flashT = 0.3; think(g, '📸', `I got a great photo of the ${sp.plural.toLowerCase()}!`); }
   if (bestV > g.favScore) { g.favScore = bestV; g.fav = bestSp; }
   const box = nearObject(g.x, g.y, 'donation', 4);
   if (g.happy > 65 && Math.random() < (box ? 0.6 : 0.3) && g.cash > 2) {
@@ -678,7 +720,7 @@ function keeperDecide(s) {
   for (const a of G.animals) {
     if (!a.escaped || taken.has('cap:' + a.id)) continue;
     const ax = Math.floor(a.x), ay = Math.floor(a.y);
-    const path = findPath(sx, sy, (x, y) => Math.abs(x - ax) + Math.abs(y - ay) <= 1, stepOnLand, 4000);
+    const path = findPath(sx, sy, (x, y) => Math.abs(x - ax) + Math.abs(y - ay) <= 1, stepStaff, 4000);
     if (path) {
       s.task = 'cap:' + a.id;
       s.path = path;
@@ -695,15 +737,23 @@ function keeperDecide(s) {
     const score = need / (1 + d / 15);
     if (score > bestScore) { bestScore = score; best = ex; }
   }
+  if (best && !best.hasGate) {
+    G.gateWarned = G.gateWarned || {};
+    if (!G.gateWarned[best.key]) {
+      G.gateWarned[best.key] = true;
+      const c = best.tiles[0];
+      notify(`The ${exhibitName(best)} has no gate, so keepers can't get in! Add one with the Exhibit Gate fence.`, 'bad', { x: (c % MAP_W) + 0.5, y: ((c / MAP_W) | 0) + 0.5 });
+    }
+  }
   if (best) {
-    const path = findPath(sx, sy, (x, y) => G.exMap[idx(x, y)] === best.id, stepOnLand, 3000);
+    const path = findPath(sx, sy, (x, y) => G.exMap[idx(x, y)] === best.id, stepStaff, 3000);
     if (path) {
       s.task = 'ex:' + best.key;
       // walk a few tiles into the exhibit so the keeper is visibly inside
       const [ix, iy] = path.length ? path[path.length - 1] : [sx, sy];
       const target = pick(best.tiles);
       const inner = findPath(ix, iy, (x, y) => idx(x, y) === target,
-        (x, y, nx, ny) => G.exMap[idx(nx, ny)] === best.id && stepOnLand(x, y, nx, ny), 800);
+        (x, y, nx, ny) => G.exMap[idx(nx, ny)] === best.id && stepStaff(x, y, nx, ny), 800);
       s.path = inner ? path.concat(inner.slice(0, 4)) : path;
       s.state = 'go';
       return;
@@ -785,7 +835,7 @@ function maintDecide(s) {
   }
   if (best) {
     const sides = fenceSides(best[0], best[1]).filter(([x, y]) => inMap(x, y) && G.tiles[idx(x, y)].t !== 'water');
-    const p = findPath(sx, sy, (x, y) => sides.some(([a, b]) => a === x && b === y), stepOnLand, 4000);
+    const p = findPath(sx, sy, (x, y) => sides.some(([a, b]) => a === x && b === y), stepStaff, 4000);
     if (p) { s.task = 'fence:' + best[0] + best[1]; s.path = p; s.state = 'go'; return; }
   }
   s.task = null;
@@ -817,14 +867,14 @@ function wanderStaff(s, sx, sy) {
   if (opts.length) { s.path = [pick(opts)]; s.state = 'walk'; }
   else {
     // off the path network: head back to the nearest path
-    const p = findPath(sx, sy, (x, y) => G.tiles[idx(x, y)].path, stepOnLand, 2000);
+    const p = findPath(sx, sy, (x, y) => G.tiles[idx(x, y)].path, stepStaff, 2000) || findPath(sx, sy, (x, y) => G.tiles[idx(x, y)].path, stepOnLand, 2000);
     if (p && p.length) { s.path = p; s.state = 'walk'; } else { s.state = 'idle'; s.timer = 2; }
   }
 }
 
 // ---------- fence wear ----------
 const STRONG = ['lion', 'tiger', 'elephant', 'rhino', 'hippo', 'grizzly', 'polarbear', 'gorilla'];
-const FENCE_WEAR = { 1: 0.07, 2: 0.05, 3: 0.02 };
+const FENCE_WEAR = { 1: 0.07, 2: 0.05, 3: 0.02, 4: 0.04 };
 function wearFences() {
   let broke = null;
   for (const [k, F, C] of [['h', G.hF, G.hC], ['v', G.vF, G.vC]]) {

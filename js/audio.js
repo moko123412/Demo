@@ -378,7 +378,7 @@ const Sound = {
 
   // ---------- interface & building sounds ----------
   play(name) {
-    const gaps = { brush: 0.07, path: 0.06, plant: 0.06, click: 0.03 };
+    const gaps = { brush: 0.07, path: 0.06, plant: 0.06, click: 0.03, gate: 0.6 };
     if (!this.ok(name, gaps[name] || 0.12)) return;
     const t = this.ctx.currentTime, seq = (notes, type, len, vol, gap) =>
       notes.forEach((f, i) => this.osc(type, f, t + i * gap, len, vol, null, { filter: ['lowpass', 4000, 0.7] }));
@@ -402,6 +402,10 @@ const Sound = {
           this.osc('square', 340, t + k * 0.07, 0.05, 0.04, null, { filter: ['lowpass', 1200, 1] });
           this.noise(t + k * 0.07, 0.05, 0.1, null, ['highpass', 2000, 1]);
         }
+        break;
+      case 'gate': // a creaky hinge and a wooden knock
+        this.osc('sawtooth', 210, t, 0.45, 0.05, null, { f1: 150, vib: [23, 18], filter: ['bandpass', 900, 4] });
+        this.noise(t + 0.42, 0.06, 0.12, null, ['lowpass', 700, 1]);
         break;
       case 'demolish':
         this.noise(t, 0.5, 0.35, null, ['lowpass', 700, 1, 150]);
@@ -507,7 +511,7 @@ const Sound = {
     if (this.ctx.createStereoPanner) { const p = this.ctx.createStereoPanner(); p.pan.value = clamp(sx / viewW * 2 - 1, -1, 1) * 0.8; p.connect(this.ambBus); d = p; }
     const t = this.ctx.currentTime;
     if (big) {
-      const clips = ['crane', 'gull'].filter(k => this.samples[k]);
+      const clips = ['crane', 'goose', 'gull'].filter(k => this.samples[k]);
       if (clips.length) this.sample(pick(clips), d, rand(0.25, 0.4), rand(0.95, 1.08));
       else for (let k = 0; k < 3; k++) this.voice(t + k * rand(0.15, 0.3), 0.18, 0.08, d, { f0: rand(700, 850), f1: 600, rasp: 0.6, formants: [[1400, 5, 1], [2800, 6, 0.4]] });
     } else {
@@ -539,7 +543,7 @@ const Sound = {
     const ctx = this.ctx, t = ctx.currentTime;
     let d = this.ambBus;
     if (ctx.createStereoPanner) { const pan = ctx.createStereoPanner(); pan.pan.value = rand(-0.85, 0.85); pan.connect(this.ambBus); d = pan; }
-    const songs = ['robin', 'blackbird', 'bunting'].filter(k => this.samples[k]);
+    const songs = ['robin', 'blackbird', 'bunting', 'meadowlark'].filter(k => this.samples[k]);
     if (songs.length && Math.random() < 0.5) { this.sample(pick(songs), d, rand(0.12, 0.25), rand(0.95, 1.05)); return; }
     const base = rand(2200, 4200), v = rand(0.018, 0.035);
     const note = (at, f0, f1, dur, vol, vib = 0) => this.osc('sine', f0, at, dur, vol, d, { f1, attack: Math.min(0.02, dur / 4), vib: vib ? [vib, f0 * 0.04] : null });

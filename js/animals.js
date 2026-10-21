@@ -147,9 +147,10 @@ function drawHead(c, P, hx, hy, a, o) {
 }
 
 function drawTail(c, P, base, o) {
-  const T = P.tail, L = P.L, top = base - P.D, sw = Math.sin(G.time * 2.2 + (o.id || 0)) * (o.moving ? 1.5 : 3);
+  const T = P.tail, L = P.L, top = base - P.D, ph = performance.now() / 1000 * (o.moving ? 5 : 2.6) + (o.id || 0);
+  const amp = (o.moving ? 2.5 : 4.5) * (T.len > 6 ? 1 : 0.4), sw = Math.sin(ph) * amp, tip = Math.sin(ph - 0.9) * amp * 1.6;
   const x0 = -L * 0.95, y0 = top + (P.slope || 0) + P.D * 0.25;
-  const x1 = x0 - T.len * 0.35 + sw * 0.3, y1 = y0 + T.len * (T.up ? -0.2 : 0.35), x2 = x0 - T.len * (T.up ? 0.7 : 0.25) + sw, y2 = y0 + T.len * (T.up ? -0.3 : 0.95);
+  const x1 = x0 - T.len * 0.35 + sw * 0.4, y1 = y0 + T.len * (T.up ? -0.2 : 0.35), x2 = x0 - T.len * (T.up ? 0.7 : 0.25) + tip, y2 = y0 + T.len * (T.up ? -0.3 : 0.95) - Math.abs(tip) * 0.2;
   c.beginPath();
   c.moveTo(x0, y0);
   c.quadraticCurveTo(x1, y1, x2, y2);
@@ -246,7 +247,7 @@ function coat(c, P, base, kind, o) {
 const HERBIVORES = ['elephant', 'giraffe', 'zebra', 'rhino', 'hippo', 'kangaroo', 'camel', 'panda'];
 function quadruped(c, P, o) {
   const t = o.anim, moving = o.moving, rest = o.state === 'rest';
-  const grazing = !rest && !moving && HERBIVORES.includes(o.sp) && (o.state === 'eat' || (o.state === 'idle' && Math.sin(G.time * 0.45 + (o.id || 0)) > 0.15));
+  const grazing = !rest && !moving && (o.state === 'drink' || (HERBIVORES.includes(o.sp) && (o.state === 'eat' || (o.state === 'idle' && Math.sin(G.time * 0.45 + (o.id || 0)) > 0.15))));
   const play = o.state === 'play';
   c.save();
   // rearing up (bears stand, horses buck) pivots on the hind feet
@@ -260,6 +261,8 @@ function quadruped(c, P, o) {
   let neckA = P.neck.a, headA = P.head.a;
   if (grazing) { neckA = P.grazeNeck != null ? P.grazeNeck : -35; headA = P.grazeHead != null ? P.grazeHead : 75; }
   if (rest) { neckA = Math.max(10, P.neck.a * 0.6); headA = P.head.a * 0.6; }
+  if (moving) { neckA += Math.sin(t * 2) * 4; headA -= Math.sin(t * 2) * 3; }
+  else if (!grazing && !rest) neckA += Math.sin(G.time * 0.7 + (o.id || 0)) * 3; // looking around
   if (play && P.play === 'roar') { neckA += 15; headA -= 25; }
   if (play && P.play === 'charge') { neckA -= 15; headA += 20; }
   const ph = [t, t + Math.PI, t + Math.PI, t]; // near hind, far hind, near fore, far fore
