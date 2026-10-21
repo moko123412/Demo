@@ -620,38 +620,39 @@ ANIMAL_SHAPES.flamingo = (c, o) => {
 };
 
 // ---------- picture sprites ----------
-// Species with a picture in SPRITE_DATA are drawn from it: a stepping bob and body
-// sway when walking, slow breathing when still, a tilt when playing, and a lying
-// pose made by lowering the body over the folded legs.
+// Species with pictures in SPRITE_DATA are drawn from them: a four-frame walk,
+// a standing pose that breathes, head-down for eating and drinking, lying down
+// to rest and a roar when playing.
 const SPRITE_IMAGES = {};
 if (typeof SPRITE_DATA !== 'undefined') {
-  for (const k in SPRITE_DATA) { const img = new Image(); img.src = SPRITE_DATA[k].src; SPRITE_IMAGES[k] = img; }
+  for (const sp in SPRITE_DATA) {
+    SPRITE_IMAGES[sp] = {};
+    for (const k in SPRITE_DATA[sp].frames) {
+      const img = new Image();
+      img.src = SPRITE_DATA[sp].frames[k].src;
+      SPRITE_IMAGES[sp][k] = img;
+    }
+  }
+}
+
+function spritePose(a, moving) {
+  if (moving) return 'walk' + Math.floor((((a.anim % 6.2832) + 6.2832) % 6.2832) / 1.5708);
+  if (a.state === 'eat' || a.state === 'drink') return 'eat';
+  if (a.state === 'rest' || a.state === 'shelter') return 'rest';
+  if (a.state === 'play') return 'play';
+  return 'stand';
 }
 
 function drawSpriteAnimal(c, a, moving) {
-  const img = SPRITE_IMAGES[a.sp], S = typeof SPRITE_DATA !== 'undefined' && SPRITE_DATA[a.sp];
+  const S = typeof SPRITE_DATA !== 'undefined' && SPRITE_DATA[a.sp];
+  if (!S) return false;
+  const pose = spritePose(a, moving), F = S.frames[pose] || S.frames.stand, img = SPRITE_IMAGES[a.sp][pose] || SPRITE_IMAGES[a.sp].stand;
   if (!img || !img.complete || !img.naturalWidth) return false;
-  const W = S.width, H = W * img.naturalHeight / img.naturalWidth, ax = W * S.anchorX;
+  const k = S.width / S.frames.stand.w, W = F.w * k, H = F.h * k;
   c.save();
-  if (a.state === 'rest') {
-    // lying down: draw the body only, resting on the ground, breathing slowly
-    const body = S.legTop, sh = img.naturalHeight * body, dh = H * body;
-    c.scale(1, 1 + Math.sin(G.time * 1.6 + a.id) * 0.015);
-    ell(c, 0, -1, W * 0.42, 3, 'rgba(0,0,0,0.2)');
-    c.drawImage(img, 0, 0, img.naturalWidth, sh, -ax, -dh + 1.5, W, dh);
-    c.restore();
-    return true;
-  }
-  let lift = 0, rot = 0;
-  if (moving) { lift = -Math.abs(Math.sin(a.anim)) * 1.6; rot = Math.sin(a.anim) * 0.03; }
-  if (a.state === 'play') rot = -0.14 * Math.abs(Math.sin(a.anim * 0.6));
-  if (a.state === 'eat' || a.state === 'drink') rot = 0.05;
-  // rotate around the hind feet so the front lifts or dips
-  c.translate(-W * 0.3, lift);
-  c.rotate(rot);
-  c.translate(W * 0.3, 0);
-  if (!moving) c.scale(1, 1 + Math.sin(G.time * 2 + a.id) * 0.012);
-  c.drawImage(img, -ax, -H, W, H);
+  if (moving) c.translate(0, -Math.abs(Math.sin(a.anim * 2)) * 0.6);
+  else c.scale(1, 1 + Math.sin(G.time * (pose === 'rest' ? 1.4 : 2) + a.id) * 0.012);
+  c.drawImage(img, -W * F.ax, -H, W, H);
   c.restore();
   return true;
 }
