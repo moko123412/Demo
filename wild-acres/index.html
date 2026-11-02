@@ -1,0 +1,1445 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+</head>
+<body>
+<title>Wild Acres Zoo</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bungee&family=Nunito+Sans:wght@400;600;700;800&family=IBM+Plex+Mono:wght@500;600&display=swap">
+<style>
+/* Layout: one-screen park office. Signage-style header, build palette left, live map centre, ranger clipboard right. */
+:root{
+  --chrome:#16211b;      /* deep pine, the park at dusk */
+  --panel:#1f2e25;
+  --panel-2:#283b30;
+  --line:#365043;
+  --ink:#eef2e6;
+  --muted:#a3b4a2;
+  --accent:#f2c14e;      /* trail-sign yellow */
+  --accent-ink:#2a2208;
+  --good:#7fd08a;
+  --warn:#f0a35a;
+  --bad:#ee716c;
+  --map-bg:#121b16;
+  --display:"Bungee","Arial Black",Impact,sans-serif;
+  --body:"Nunito Sans",system-ui,-apple-system,"Segoe UI",sans-serif;
+  --mono:"IBM Plex Mono",ui-monospace,"SFMono-Regular",Menlo,monospace;
+  color-scheme:dark;
+}
+*{box-sizing:border-box}
+[hidden]{display:none!important}
+html,body{height:100%}
+body{margin:0;background:var(--chrome);color:var(--ink);font-family:var(--body);font-size:14px;overflow:hidden}
+button{font:inherit;color:inherit}
+button:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+#app{height:100%;display:grid;grid-template-rows:auto minmax(0,1fr);gap:10px;
+  padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px));padding-block:10px}
+
+/* header */
+.top{display:flex;flex-wrap:wrap;align-items:center;gap:10px 18px}
+.brand{display:flex;align-items:baseline;gap:8px;margin-right:auto}
+.logo{font-family:var(--display);font-size:22px;letter-spacing:.02em;color:var(--accent);line-height:1}
+.brand small{font-size:11px;letter-spacing:.14em;text-transform:uppercase;color:var(--muted);font-weight:700}
+.stats{display:flex;flex-wrap:wrap;gap:6px}
+.stat{background:var(--panel);border:1px solid var(--line);border-radius:8px;padding:4px 10px;display:grid;min-width:76px}
+.lbl{font-size:10px;letter-spacing:.12em;text-transform:uppercase;color:var(--muted);font-weight:700}
+.stat b{font-family:var(--mono);font-size:15px;font-variant-numeric:tabular-nums;font-weight:600}
+.stat b.neg{color:var(--bad)}
+.stars{color:var(--accent);letter-spacing:1px}
+.controls{display:flex;flex-wrap:wrap;gap:6px;align-items:center}
+.seg{display:flex;background:var(--panel);border:1px solid var(--line);border-radius:8px;overflow:hidden}
+.seg button{background:none;border:0;padding:7px 10px;cursor:pointer;font-size:12px;color:var(--muted);font-weight:800}
+.seg button[aria-pressed="true"]{background:var(--accent);color:var(--accent-ink)}
+.ticket{display:flex;align-items:center;gap:6px;background:var(--panel);border:1px solid var(--line);border-radius:8px;padding:3px 6px 3px 10px}
+.ticket b{font-family:var(--mono);min-width:34px;text-align:center}
+.mini{background:var(--panel-2);border:1px solid var(--line);border-radius:6px;width:26px;height:26px;cursor:pointer;font-weight:800}
+.btn{background:var(--panel-2);border:1px solid var(--line);border-radius:8px;padding:7px 12px;cursor:pointer;font-weight:700}
+.btn:hover,.mini:hover{border-color:var(--accent)}
+.btn.primary{background:var(--accent);color:var(--accent-ink);border-color:var(--accent)}
+.btn.danger{background:transparent;border-color:var(--bad);color:var(--bad)}
+.btn:disabled{opacity:.45;cursor:not-allowed}
+
+/* main */
+.main{display:grid;grid-template-columns:236px minmax(0,1fr) 284px;gap:10px;min-height:0}
+.tools,.side{min-height:0;overflow:auto;display:flex;flex-direction:column;gap:10px}
+.card{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:12px}
+.card h3{margin:0 0 8px;font-family:var(--display);font-weight:400;font-size:13px;letter-spacing:.04em;color:var(--accent)}
+.tabs{display:grid;grid-template-columns:repeat(5,1fr);gap:3px;background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:3px}
+.tabs button{background:none;border:0;border-radius:7px;padding:7px 0;font-size:10.5px;font-weight:800;letter-spacing:.06em;text-transform:uppercase;color:var(--muted);cursor:pointer}
+.tabs button[aria-selected="true"]{background:var(--panel-2);color:var(--ink)}
+#toolList{display:flex;flex-direction:column;gap:4px}
+.tool{display:grid;grid-template-columns:30px minmax(0,1fr) auto;align-items:center;gap:8px;text-align:left;background:var(--panel);border:1px solid var(--line);border-radius:8px;padding:6px 8px;cursor:pointer}
+.tool:hover{border-color:#5b7a66}
+.tool[aria-pressed="true"]{border-color:var(--accent);background:var(--panel-2);box-shadow:inset 3px 0 0 var(--accent)}
+.tool .ic{font-size:20px;text-align:center;line-height:1}
+.tool .nm{font-weight:700;line-height:1.15;min-width:0}
+.tool .nm small{display:block;color:var(--muted);font-weight:600;font-size:11px}
+.tool .pr{font-family:var(--mono);font-size:12px;color:var(--muted)}
+.tool.poor .pr{color:var(--bad)}
+.tool.locked{opacity:.5}
+.swatch{display:block;width:22px;height:22px;border-radius:5px;margin:auto;border:2px solid #5b4127}
+.group-lbl{margin:8px 2px 2px;font-size:10px;letter-spacing:.14em;text-transform:uppercase;color:var(--muted);font-weight:800}
+.note{color:var(--muted);font-size:12px;line-height:1.45;margin:4px 2px}
+
+.stage{display:grid;grid-template-rows:minmax(0,1fr) auto;gap:6px;min-height:0;min-width:0}
+#view{position:relative;min-height:0;border-radius:12px;overflow:hidden;background:var(--map-bg);border:1px solid var(--line);touch-action:none}
+#cv{position:absolute;inset:0;width:100%;height:100%;display:block;cursor:crosshair}
+.zoom{position:absolute;right:10px;top:10px;display:flex;flex-direction:column;gap:4px}
+.zoom .mini{width:32px;height:32px;font-size:16px;background:rgba(22,33,27,.85)}
+#toasts{position:absolute;left:10px;bottom:10px;display:flex;flex-direction:column;gap:6px;pointer-events:none;max-width:min(380px,80%)}
+.toast{background:rgba(22,33,27,.92);border:1px solid var(--line);border-left:3px solid var(--accent);border-radius:8px;padding:7px 10px;font-weight:600;font-size:13px;animation:pop .25s ease-out}
+.toast.bad{border-left-color:var(--bad)}.toast.good{border-left-color:var(--good)}
+@keyframes pop{from{transform:translateY(6px);opacity:.3}to{transform:none;opacity:1}}
+@media (prefers-reduced-motion:reduce){.toast{animation:none}}
+.hint{font-size:12.5px;color:var(--muted);padding:0 4px;min-height:18px}
+.hint b{color:var(--ink)}
+
+/* info panel */
+.kv{display:grid;grid-template-columns:auto 1fr;gap:4px 10px;font-size:13px}
+.kv span:nth-child(odd){color:var(--muted)}
+.bar{height:7px;border-radius:4px;background:var(--panel-2);overflow:hidden;margin-top:3px}
+.bar i{display:block;height:100%;border-radius:4px}
+.meter{display:grid;gap:2px;margin:6px 0}
+.meter .row{display:flex;justify-content:space-between;font-size:12px}
+.meter .row b{font-family:var(--mono);font-weight:500}
+.chips{display:flex;flex-wrap:wrap;gap:4px;margin:6px 0}
+.chip{font-size:11px;font-weight:700;border-radius:999px;padding:2px 8px;border:1px solid var(--line);background:var(--panel-2)}
+.chip.bad{border-color:var(--bad);color:var(--bad)}.chip.good{border-color:var(--good);color:var(--good)}
+.actions{display:flex;flex-wrap:wrap;gap:6px;margin-top:10px}
+.alist{display:flex;flex-direction:column;gap:3px;margin-top:8px;max-height:170px;overflow:auto}
+.arow{display:grid;grid-template-columns:22px 1fr 44px;align-items:center;gap:6px;font-size:12.5px;background:var(--panel-2);border-radius:6px;padding:3px 6px;border:0;text-align:left;cursor:pointer}
+.arow b{font-family:var(--mono);font-weight:500;text-align:right}
+.title-row{display:flex;align-items:center;gap:10px;margin-bottom:8px}
+.title-row .big{font-size:28px;line-height:1}
+.title-row h4{margin:0;font-size:16px}
+.title-row p{margin:0;color:var(--muted);font-size:12px}
+.thought{font-style:italic;color:var(--ink);background:var(--panel-2);border-radius:8px;padding:6px 9px;margin-top:8px;font-size:12.5px}
+#goals{margin:0;padding-left:20px;display:flex;flex-direction:column;gap:6px;font-size:13px}
+#goals li.done{color:var(--muted);text-decoration:line-through}
+#goals li small{color:var(--accent);font-family:var(--mono);margin-left:4px}
+.ledger{display:grid;grid-template-columns:1fr auto;gap:3px 10px;font-size:12.5px}
+.ledger b{font-family:var(--mono);font-weight:500;text-align:right;font-variant-numeric:tabular-nums}
+.ledger .tot{border-top:1px solid var(--line);padding-top:4px;font-weight:800}
+.pos{color:var(--good)}.negc{color:var(--bad)}
+
+/* overlay */
+#overlay{position:fixed;inset:0;background:rgba(10,16,12,.78);display:grid;place-items:center;z-index:20;
+  padding:max(16px,env(safe-area-inset-top,0px)) max(16px,env(safe-area-inset-right,0px)) max(16px,env(safe-area-inset-bottom,0px)) max(16px,env(safe-area-inset-left,0px))}
+.dialog{background:var(--panel);border:1px solid var(--line);border-radius:16px;padding:26px;max-width:520px;width:100%;max-height:100%;overflow:auto}
+.dialog h1{font-family:var(--display);font-weight:400;color:var(--accent);font-size:clamp(30px,7vw,46px);margin:0;line-height:1;text-wrap:balance}
+.dialog h2{font-family:var(--display);font-weight:400;color:var(--accent);font-size:22px;margin:0 0 8px}
+.dialog p{color:var(--muted);line-height:1.5;margin:10px 0}
+.dialog ol{padding-left:20px;line-height:1.55;margin:12px 0}
+.dialog .actions{margin-top:18px}
+.parkline{font-family:var(--mono);font-size:11px;color:var(--muted);letter-spacing:.08em;margin-top:6px}
+
+@media (max-width:1000px){
+  body{overflow:auto}
+  #app{height:auto;min-height:100%}
+  .main{grid-template-columns:minmax(0,1fr)}
+  .stage{order:1}
+  #view{height:auto;aspect-ratio:3/2;max-width:100%}
+  #toasts .toast:nth-last-child(n+3){display:none}
+  .tools{order:2;overflow:visible}
+  .side{order:3;overflow:visible}
+  #toolList{display:grid;grid-template-columns:repeat(auto-fill,minmax(170px,1fr))}
+}
+</style>
+
+<div id="app">
+  <header class="top">
+    <div class="brand"><span class="logo">Wild Acres</span><small>Zoo &amp; Wildlife Park</small></div>
+    <div class="stats">
+      <div class="stat"><span class="lbl">Cash</span><b id="sMoney">$0</b></div>
+      <div class="stat"><span class="lbl">Guests</span><b id="sGuests">0</b></div>
+      <div class="stat"><span class="lbl">Animals</span><b id="sAnimals">0</b></div>
+      <div class="stat"><span class="lbl">Rating</span><b id="sStars" class="stars">☆☆☆☆☆</b></div>
+      <div class="stat"><span class="lbl" id="sDay">Day 1</span><b id="sClock">08:00</b></div>
+    </div>
+    <div class="controls">
+      <div class="seg" id="speed" role="group" aria-label="Game speed">
+        <button data-speed="0" title="Pause (Space)">II</button>
+        <button data-speed="1" title="Normal speed">1×</button>
+        <button data-speed="2" title="Fast">2×</button>
+        <button data-speed="4" title="Fastest">4×</button>
+      </div>
+      <div class="ticket"><span class="lbl">Ticket</span><button class="mini" id="pMinus" aria-label="Lower ticket price">−</button><b id="sPrice">$12</b><button class="mini" id="pPlus" aria-label="Raise ticket price">+</button></div>
+      <button class="btn" id="menuBtn">Menu</button>
+    </div>
+  </header>
+
+  <main class="main">
+    <aside class="tools">
+      <nav class="tabs" role="tablist" id="tabs">
+        <button role="tab" data-tab="build" aria-selected="true">Build</button>
+        <button role="tab" data-tab="animals">Animals</button>
+        <button role="tab" data-tab="shops">Shops</button>
+        <button role="tab" data-tab="scenery">Decor</button>
+        <button role="tab" data-tab="staff">Staff</button>
+      </nav>
+      <div id="toolList"></div>
+    </aside>
+
+    <section class="stage">
+      <div id="view">
+        <canvas id="cv"></canvas>
+        <div class="zoom"><button class="mini" id="zIn" aria-label="Zoom in">+</button><button class="mini" id="zOut" aria-label="Zoom out">−</button></div>
+        <div id="toasts" aria-live="polite"></div>
+      </div>
+      <div class="hint" id="hint"></div>
+    </section>
+
+    <aside class="side">
+      <section class="card" id="info"></section>
+      <section class="card"><h3>Park goals</h3><ol id="goals"></ol></section>
+      <section class="card"><h3>Yesterday's books</h3><div id="ledger" class="ledger"></div></section>
+    </aside>
+  </main>
+</div>
+<div id="overlay" hidden></div>
+
+<script>
+(() => {
+'use strict';
+/* ================= constants ================= */
+const W = 48, H = 32, TS = 20, DAY_LEN = 90, OPEN = 0.25, CLOSE = 0.85, STEP = 0.05;
+const T = { GRASS: 0, PATH: 1, HAB: 2, BLD: 3, GATE: 4 };
+const GATE_X = 24, GATE_Y = H - 1;
+const DIRS = [[1,0],[-1,0],[0,1],[0,-1]];
+const SAVE_KEY = 'wild-acres-save-v1';
+
+const BIOMES = {
+  savanna: { name: 'Savanna',  color: '#d4bb6c', alt: '#c9ad5c', tuft: '#b0954a' },
+  forest:  { name: 'Forest',   color: '#4f8b45', alt: '#467e3d', tuft: '#3a6b33' },
+  arctic:  { name: 'Tundra',   color: '#e3eef3', alt: '#d5e5ec', tuft: '#bcd3de' },
+  wetland: { name: 'Wetland',  color: '#5fa38c', alt: '#56977f', tuft: '#3f8a73' },
+};
+const SPECIES = {
+  zebra:    { name: 'Zebra',      e: '🦓', biome: 'savanna', cost: 1200, appeal: 5,  space: 8,  social: 1, stars: 0, size: 1.1 },
+  flamingo: { name: 'Flamingo',   e: '🦩', biome: 'wetland', cost: 700,  appeal: 4,  space: 3,  social: 1, stars: 0, size: .95 },
+  deer:     { name: 'Red Deer',   e: '🦌', biome: 'forest',  cost: 800,  appeal: 4,  space: 6,  social: 1, stars: 0, size: 1.05 },
+  penguin:  { name: 'Penguin',    e: '🐧', biome: 'arctic',  cost: 900,  appeal: 6,  space: 3,  social: 1, stars: 0, size: .85 },
+  kangaroo: { name: 'Kangaroo',   e: '🦘', biome: 'savanna', cost: 1500, appeal: 6,  space: 8,  social: 1, stars: 0, size: 1.05 },
+  monkey:   { name: 'Monkey',     e: '🐒', biome: 'forest',  cost: 1100, appeal: 6,  space: 5,  social: 1, stars: 0, size: .9 },
+  seal:     { name: 'Seal',       e: '🦭', biome: 'arctic',  cost: 1600, appeal: 6,  space: 6,  social: 1, stars: 1, size: 1 },
+  croc:     { name: 'Crocodile',  e: '🐊', biome: 'wetland', cost: 2400, appeal: 7,  space: 10, social: 0, pred: 1, stars: 1, size: 1.15 },
+  lion:     { name: 'Lion',       e: '🦁', biome: 'savanna', cost: 2800, appeal: 9,  space: 12, social: 1, pred: 1, stars: 1, size: 1.15 },
+  giraffe:  { name: 'Giraffe',    e: '🦒', biome: 'savanna', cost: 3000, appeal: 8,  space: 12, social: 1, stars: 2, size: 1.35 },
+  tiger:    { name: 'Tiger',      e: '🐅', biome: 'forest',  cost: 3200, appeal: 9,  space: 12, social: 0, pred: 1, stars: 2, size: 1.2 },
+  hippo:    { name: 'Hippo',      e: '🦛', biome: 'wetland', cost: 3500, appeal: 8,  space: 14, social: 1, stars: 2, size: 1.3 },
+  gorilla:  { name: 'Gorilla',    e: '🦍', biome: 'forest',  cost: 4000, appeal: 9,  space: 10, social: 1, stars: 3, size: 1.2 },
+  polar:    { name: 'Polar Bear', e: '🐻‍❄️', biome: 'arctic', cost: 4500, appeal: 9, space: 14, social: 0, pred: 1, stars: 3, size: 1.25 },
+  rhino:    { name: 'Rhino',      e: '🦏', biome: 'savanna', cost: 4200, appeal: 8,  space: 16, social: 0, stars: 3, size: 1.3 },
+  elephant: { name: 'Elephant',   e: '🐘', biome: 'savanna', cost: 6000, appeal: 10, space: 20, social: 1, stars: 4, size: 1.5 },
+  panda:    { name: 'Giant Panda', e: '🐼', biome: 'forest', cost: 8000, appeal: 10, space: 12, social: 0, stars: 4, size: 1.15 },
+};
+const SHOPS = {
+  food:     { name: 'Burger Stand',  e: '🍔', cost: 650,  price: 5, need: 'hunger',  upkeep: 12, color: '#b9513b' },
+  icecream: { name: 'Ice Cream Cart',e: '🍦', cost: 450,  price: 3, need: 'hunger',  upkeep: 8,  color: '#c9719a' },
+  drink:    { name: 'Drink Stand',   e: '🥤', cost: 400,  price: 2, need: 'thirst',  upkeep: 6,  color: '#3b7fb9' },
+  restroom: { name: 'Restrooms',     e: '🚻', cost: 550,  price: 0, need: 'bladder', upkeep: 10, color: '#5f6f80' },
+  gift:     { name: 'Gift Shop',     e: '🎁', cost: 1200, price: 9, need: 'shop',    upkeep: 15, color: '#7d55b0' },
+  bench:    { name: 'Bench',         e: '🪑', cost: 60,   price: 0, need: 'energy',  upkeep: 0,  color: null },
+  bin:      { name: 'Trash Bin',     e: '🗑️', cost: 40,   price: 0, need: null,      upkeep: 0,  color: null },
+};
+const DECOR = {
+  tree:    { name: 'Broadleaf Tree', e: '🌳', cost: 40,  enrich: 2 },
+  pine:    { name: 'Pine Tree',      e: '🌲', cost: 40,  enrich: 2 },
+  palm:    { name: 'Palm Tree',      e: '🌴', cost: 50,  enrich: 2 },
+  bush:    { name: 'Shrub',          e: '🌿', cost: 20,  enrich: 1 },
+  rock:    { name: 'Boulder',        e: '🪨', cost: 35,  enrich: 2 },
+  log:     { name: 'Hollow Log',     e: '🪵', cost: 35,  enrich: 2 },
+  pond:    { name: 'Water Hole',     e: null, cost: 150, enrich: 4 },
+  ball:    { name: 'Enrichment Ball',e: '⚽', cost: 60,  enrich: 3 },
+  flowers: { name: 'Flower Bed',     e: '🌷', cost: 15,  enrich: 0 },
+};
+const STAFF = {
+  keeper:  { name: 'Zookeeper', hire: 300, wage: 60, color: '#2f8a52', letter: 'K', desc: 'Feeds animals and cleans habitats' },
+  janitor: { name: 'Janitor',   hire: 150, wage: 40, color: '#3a70b5', letter: 'J', desc: 'Picks up litter on paths' },
+};
+const NAMES = ['Kito','Mara','Juno','Bo','Pip','Zuri','Nala','Odo','Remy','Tavi','Suki','Ivo','Lumi','Bramble','Sable','Moss','Fig','Rook','Dune','Echo','Kaya','Rufus','Wren','Oaky','Pebble','Saffi','Tamsin','Hobb','Nimbus','Clover'];
+const GOALS = [
+  { id: 'hab2',  text: 'Build a second habitat',             reward: 1000,  check: s => s.habs.length >= 2 },
+  { id: 'a6',    text: 'Care for 6 animals',                 reward: 1500,  check: s => s.animals.length >= 6 },
+  { id: 'food',  text: 'Open a food stand',                  reward: 800,   check: s => s.blds.some(b => SHOPS[b.type].need === 'hunger') },
+  { id: 'keep',  text: 'Hire a zookeeper',                   reward: 500,   check: s => s.staff.some(f => f.type === 'keeper') },
+  { id: 'g25',   text: 'Have 25 guests in the park at once', reward: 2500,  check: s => s.guests.length >= 25 },
+  { id: 'sp4',   text: 'Exhibit 4 species',                  reward: 3000,  check: s => speciesCount() >= 4 },
+  { id: 'baby',  text: 'Welcome a baby animal',              reward: 3000,  check: s => s.babies > 0 },
+  { id: 'st3',   text: 'Earn a 3-star rating',               reward: 5000,  check: s => s.stars >= 3 },
+  { id: 'sp8',   text: 'Exhibit 8 species',                  reward: 8000,  check: s => speciesCount() >= 8 },
+  { id: 'v500',  text: 'Welcome 500 visitors in total',      reward: 6000,  check: s => s.totalGuests >= 500 },
+  { id: 'a30',   text: 'Care for 30 animals',                reward: 10000, check: s => s.animals.length >= 30 },
+  { id: 'st5',   text: 'Earn a 5-star rating',               reward: 25000, check: s => s.stars >= 4.75 },
+  { id: 'cash',  text: 'Bank $150,000',                      reward: 0,     check: s => s.money >= 150000 },
+];
+
+/* ================= state ================= */
+let S = null;
+let habById = new Map(), bldById = new Map();
+let viewMap = [], adjNeed = [], staticDirty = true, cachesDirty = true;
+let sel = null, confirmDemo = null;
+let tool = { kind: 'select', arg: null };
+let hover = null, dragRect = null;
+let timers = { stats: 0, rating: 0, ui: 0, panel: 0, goals: 0 };
+let running = false;
+
+const I = (x, y) => y * W + x;
+const inb = (x, y) => x >= 0 && y >= 0 && x < W && y < H;
+const walk = i => S.t[i] === T.PATH || S.t[i] === T.GATE;
+const rnd = (a, b) => a + Math.random() * (b - a);
+const pick = arr => arr[(Math.random() * arr.length) | 0];
+const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
+const fmt = n => (n < 0 ? '−$' : '$') + Math.abs(Math.round(n)).toLocaleString('en-US');
+const hash = (x, y) => (((x * 73856093) ^ (y * 19349663) ^ 0x5bd1e995) >>> 0);
+const speciesCount = () => new Set(S.animals.map(a => a.sp)).size;
+const starLevel = () => Math.floor(S.stars + 0.001);
+
+function blankState() {
+  const n = W * H;
+  return {
+    v: 1, money: 25000, day: 1, time: 0.26, price: 12, speed: 1,
+    t: new Array(n).fill(0), hab: new Array(n).fill(0), bld: new Array(n).fill(0),
+    decor: new Array(n).fill(null), litter: new Array(n).fill(0),
+    habs: [], animals: [], guests: [], staff: [], blds: [],
+    nid: 1, stars: 1.5, totalGuests: 0, babies: 0, goals: {},
+    today: newLedger(), yesterday: null, leaveHappy: [], spawnAcc: 0,
+  };
+}
+function newLedger() { return { admission: 0, shops: 0, wages: 0, upkeep: 0, feed: 0, visitors: 0 }; }
+
+function newGame() {
+  S = blankState();
+  // starter layout: entrance road, a loop of paths
+  const setPath = (x, y) => { S.t[I(x, y)] = T.PATH; };
+  for (let y = 24; y < H - 1; y++) setPath(24, y);
+  S.t[I(GATE_X, GATE_Y)] = T.GATE;
+  for (let x = 10; x <= 38; x++) { setPath(x, 24); setPath(x, 9); }
+  for (let y = 9; y <= 24; y++) { setPath(10, y); setPath(38, y); setPath(24, y); }
+  // scattered wild trees
+  for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) {
+    const i = I(x, y); if (S.t[i] !== T.GRASS) continue;
+    let nearPath = false;
+    for (let dy = -1; dy <= 1; dy++) for (let dx = -1; dx <= 1; dx++) if (inb(x + dx, y + dy) && walk(I(x + dx, y + dy))) nearPath = true;
+    const h = hash(x, y) % 1000;
+    if (!nearPath && h < 55) S.decor[i] = h < 20 ? 'pine' : h < 45 ? 'tree' : 'bush';
+  }
+  // starter savanna with zebras
+  const hb = createHabitat(12, 18, 10, 6, 'savanna', true);
+  S.decor[I(14, 19)] = 'tree'; S.decor[I(19, 21)] = 'rock'; S.decor[I(16, 22)] = 'bush'; S.decor[I(20, 19)] = 'pond';
+  for (let k = 0; k < 3; k++) createAnimal('zebra', hb, rnd(hb.x + 1, hb.x + hb.w - 1), rnd(hb.y + 1, hb.y + hb.h - 1));
+  createBuilding('drink', 26, 25, true);
+  createBuilding('bench', 23, 27, true);
+  createBuilding('bin', 25, 28, true);
+  sel = null; confirmDemo = null;
+  rebuildIndex();
+}
+
+function rebuildIndex() {
+  habById = new Map(S.habs.map(h => [h.id, h]));
+  bldById = new Map(S.blds.map(b => [b.id, b]));
+  staticDirty = cachesDirty = true;
+}
+
+/* ================= creation ================= */
+function createHabitat(x, y, w, h, biome, free) {
+  const hb = { id: S.nid++, x, y, w, h, biome, food: 100, clean: 100, name: `${BIOMES[biome].name} Habitat ${S.habs.filter(q => q.biome === biome).length + 1}` };
+  for (let yy = y; yy < y + h; yy++) for (let xx = x; xx < x + w; xx++) { const i = I(xx, yy); S.t[i] = T.HAB; S.hab[i] = hb.id; }
+  S.habs.push(hb); habById.set(hb.id, hb);
+  if (!free) spend(w * h * 20);
+  staticDirty = cachesDirty = true;
+  return hb;
+}
+function createAnimal(sp, hb, x, y, baby) {
+  const a = { id: S.nid++, sp, hab: hb.id, x, y, tx: x, ty: y, wait: rnd(0, 2), happy: baby ? 80 : 65, target: 65, age: 0, baby: !!baby, dir: 1, reasons: [], name: pick(NAMES) };
+  S.animals.push(a);
+  return a;
+}
+function createBuilding(type, x, y, free) {
+  const i = I(x, y);
+  const b = { id: S.nid++, type, x, y, rev: 0 };
+  S.t[i] = T.BLD; S.bld[i] = b.id; S.decor[i] = null;
+  S.blds.push(b); bldById.set(b.id, b);
+  if (!free) spend(SHOPS[type].cost);
+  staticDirty = cachesDirty = true;
+  return b;
+}
+function spend(n) { S.money -= n; }
+
+/* ================= caches ================= */
+function rebuildCaches() {
+  viewMap = new Array(W * H).fill(null);
+  adjNeed = new Array(W * H).fill(null);
+  for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) {
+    const i = I(x, y); if (!walk(i)) continue;
+    for (let dy = -1; dy <= 1; dy++) for (let dx = -1; dx <= 1; dx++) {
+      if (!inb(x + dx, y + dy)) continue;
+      const h = S.hab[I(x + dx, y + dy)];
+      if (h) { (viewMap[i] ||= []); if (!viewMap[i].includes(h)) viewMap[i].push(h); }
+    }
+    for (const [dx, dy] of DIRS) {
+      if (!inb(x + dx, y + dy)) continue;
+      const b = bldById.get(S.bld[I(x + dx, y + dy)]);
+      if (b && SHOPS[b.type].need) { (adjNeed[i] ||= []); if (!adjNeed[i].includes(SHOPS[b.type].need)) adjNeed[i].push(SHOPS[b.type].need); }
+    }
+  }
+  cachesDirty = false;
+}
+const hasNeedShop = need => S.blds.some(b => SHOPS[b.type].need === need);
+
+const prevArr = new Int32Array(W * H);
+function bfs(start, goal) {
+  if (goal(start)) return [];
+  prevArr.fill(-1); prevArr[start] = start;
+  const q = [start]; let h = 0;
+  while (h < q.length) {
+    const c = q[h++], cx = c % W, cy = (c / W) | 0;
+    for (const [dx, dy] of DIRS) {
+      const nx = cx + dx, ny = cy + dy;
+      if (!inb(nx, ny)) continue;
+      const n = I(nx, ny);
+      if (prevArr[n] !== -1 || !walk(n)) continue;
+      prevArr[n] = c;
+      if (goal(n)) { const r = []; let k = n; while (k !== start) { r.push(k); k = prevArr[k]; } return r.reverse(); }
+      q.push(n);
+    }
+  }
+  return null;
+}
+
+/* ================= simulation ================= */
+function step(dt) {
+  if (cachesDirty) rebuildCaches();
+  S.time += dt / DAY_LEN;
+  if (S.time >= 1) { S.time -= 1; endDay(); }
+  const open = S.time >= OPEN && S.time < CLOSE;
+
+  if (open && S.guests.length < 350) {
+    S.spawnAcc += dt * spawnRate();
+    while (S.spawnAcc >= 1) { S.spawnAcc -= 1; spawnGuest(); }
+  }
+  for (const h of S.habs) {
+    const n = S.animals.reduce((c, a) => c + (a.hab === h.id ? (a.baby ? .5 : 1) : 0), 0);
+    h.food = Math.max(0, h.food - dt * 0.2 * n);
+    h.clean = Math.max(0, h.clean - dt * 0.08 * n);
+  }
+  for (const a of S.animals) updAnimal(a, dt);
+  for (let k = S.guests.length - 1; k >= 0; k--) updGuest(S.guests[k], dt);
+  S.guests = S.guests.filter(g => !g.gone);
+  for (const f of S.staff) updStaff(f, dt);
+
+  timers.stats += dt; if (timers.stats >= 1) { timers.stats = 0; habStats(); }
+  timers.rating += dt; if (timers.rating >= 2) { timers.rating = 0; rate(); }
+  timers.goals += dt; if (timers.goals >= 1) { timers.goals = 0; checkGoals(); }
+}
+
+function fairPrice() { return 8 + S.stars * 4 + Math.min(8, speciesCount()); }
+function spawnRate() {
+  let attr = 0;
+  for (const a of S.animals) attr += SPECIES[a.sp].appeal * (a.happy / 100) * (a.baby ? 1.4 : 1);
+  const pf = clamp(1.5 - 0.5 * S.price / fairPrice(), 0.08, 1.3);
+  return (0.08 + Math.sqrt(attr) * 0.09 + S.stars * 0.05) * pf;
+}
+function spawnGuest() {
+  const g = {
+    id: S.nid++, x: GATE_X, y: GATE_Y, nx: GATE_X, ny: GATE_Y, p: 0, moving: false, pi: -1,
+    state: 'wander', route: null, goal: null, useT: 0,
+    hunger: rnd(0, 40), thirst: rnd(0, 40), energy: rnd(0, 20), bladder: rnd(0, 30),
+    happy: 62, money: Math.round(rnd(15, 70)), time: 0, stay: rnd(35, 80), seen: {}, spSeen: {},
+    fails: {}, litterT: 0, gift: 0, spd: rnd(1.6, 2.2),
+    ox: rnd(-.22, .22), oy: rnd(-.22, .22), hue: (Math.random() * 360) | 0, thought: 'Excited to see the animals!',
+  };
+  S.money += S.price; S.today.admission += S.price; S.today.visitors++; S.totalGuests++;
+  if (S.price > fairPrice() * 1.35) { g.happy -= 15; g.thought = 'That ticket was a rip-off.'; }
+  S.guests.push(g);
+}
+function think(g, txt) { g.thought = txt; }
+function removeGuest(g, viaGate) {
+  g.gone = true;
+  if (viaGate) { S.leaveHappy.push(Math.round(g.happy)); if (S.leaveHappy.length > 40) S.leaveHappy.shift(); }
+  if (sel && sel.kind === 'guest' && sel.id === g.id) sel = null;
+}
+
+function updGuest(g, dt) {
+  g.time += dt;
+  g.hunger += dt * 0.55; g.thirst += dt * 0.75; g.energy += dt * 0.4; g.bladder += dt * 0.45;
+  for (const k of ['hunger', 'thirst', 'energy', 'bladder']) if (g[k] > 90) g.happy -= dt * 0.5;
+  g.happy = clamp(g.happy, 0, 100);
+  if (g.state === 'use') { g.useT -= dt; if (g.useT <= 0) finishUse(g); return; }
+  if (g.moving) {
+    g.p += dt * g.spd;
+    if (g.p < 1) return;
+    g.x = g.nx; g.y = g.ny; g.p = 0; g.moving = false;
+    if (!walk(I(g.x, g.y))) return removeGuest(g, false);
+    arrive(g);
+    if (g.gone) return;
+  }
+  if (!walk(I(g.x, g.y))) return removeGuest(g, false);
+  decide(g);
+}
+
+function arrive(g) {
+  const i = I(g.x, g.y);
+  if (S.litter[i] > 0) { g.happy -= 0.7 * S.litter[i]; if (Math.random() < 0.15) think(g, 'These paths are covered in litter.'); }
+  const hs = viewMap[i];
+  if (hs) for (const hid of hs) if (!g.seen[hid]) { g.seen[hid] = 1; viewHab(g, hid); }
+  if (g.litterT > 0 && --g.litterT === 0 && !binNear(g.x, g.y)) S.litter[i] = Math.min(5, S.litter[i] + 1);
+}
+function binNear(x, y) { return S.blds.some(b => b.type === 'bin' && Math.abs(b.x - x) + Math.abs(b.y - y) <= 4); }
+
+function viewHab(g, hid) {
+  const list = S.animals.filter(a => a.hab === hid);
+  if (!list.length) { g.happy -= 1; think(g, 'Why is this enclosure empty?'); return; }
+  let sum = 0, sad = 0, best = list[0];
+  for (const a of list) {
+    const sp = SPECIES[a.sp];
+    sum += sp.appeal * (a.happy / 100) * (a.baby ? 1.4 : 1);
+    if (a.happy < 30) sad++;
+    if (sp.appeal > SPECIES[best.sp].appeal) best = a;
+    if (!g.spSeen[a.sp]) { g.spSeen[a.sp] = 1; g.happy += 2; }
+  }
+  g.happy += Math.min(22, sum * 1.1) - Math.min(9, sad * 3);
+  if (sad) think(g, `The ${SPECIES[list.find(a => a.happy < 30).sp].name.toLowerCase()}s look miserable.`);
+  else if (list.some(a => a.baby)) think(g, `Aww, a baby ${SPECIES[list.find(a => a.baby).sp].name.toLowerCase()}!`);
+  else think(g, `Wow, look at the ${SPECIES[best.sp].name.toLowerCase()}${list.length > 1 ? 's' : ''}!`);
+}
+
+function wantsLeave(g) {
+  return S.time >= CLOSE || g.time > g.stay || g.happy < 12 || (g.money < 2 && g.time > 25);
+}
+function startLeave(g) {
+  g.state = 'leave';
+  g.route = bfs(I(g.x, g.y), n => S.t[n] === T.GATE);
+  if (g.route === null) removeGuest(g, false);
+  if (g.happy < 12) think(g, 'I want to go home.');
+}
+function seek(g, need) {
+  const r = bfs(I(g.x, g.y), n => adjNeed[n] && adjNeed[n].includes(need));
+  if (r === null) { g.fails[need] = g.time; return false; }
+  g.state = 'seek'; g.goal = need; g.route = r; return true;
+}
+const NEED_TXT = { hunger: 'I\'m starving, where can I eat?', thirst: 'I\'m so thirsty, is there a drink stand?', energy: 'My feet hurt. I need a bench.', bladder: 'I really need a restroom!' };
+function urgent(g) {
+  let best = null, bv = 65;
+  for (const k of ['hunger', 'thirst', 'energy', 'bladder']) {
+    if (g[k] > bv && !(g.fails[k] && g.time - g.fails[k] < 15)) { best = k; bv = g[k]; }
+  }
+  return best;
+}
+function decide(g) {
+  const i = I(g.x, g.y);
+  if (g.state !== 'leave' && g.state !== 'seek' && wantsLeave(g)) {
+    if (!g.gift && S.time < CLOSE && g.money >= SHOPS.gift.price && hasNeedShop('shop') && Math.random() < 0.6) {
+      g.gift = 1; if (!seek(g, 'shop')) startLeave(g);
+    } else { g.gift = 1; startLeave(g); }
+    if (g.gone) return;
+  }
+  if (g.state === 'wander') {
+    const need = urgent(g);
+    if (need) {
+      if (!hasNeedShop(need) || !seek(g, need)) { g.fails[need] = g.time; g.happy -= 3; think(g, NEED_TXT[need]); }
+    }
+  }
+  if (g.route) {
+    if (g.route.length) {
+      const n = g.route.shift();
+      if (!walk(n)) { g.route = null; if (g.state === 'seek') g.state = 'wander'; return; }
+      return stepTo(g, n);
+    }
+    g.route = null;
+    if (g.state === 'leave') { if (S.t[i] === T.GATE) return removeGuest(g, true); return startLeave(g); }
+    if (g.state === 'seek') return useShop(g);
+  }
+  if (g.state === 'leave') return startLeave(g);
+  wanderStep(g);
+}
+function stepTo(g, n) { g.pi = I(g.x, g.y); g.nx = n % W; g.ny = (n / W) | 0; g.moving = true; g.p = 0; }
+function wanderStep(g) {
+  const opts = []; let tot = 0;
+  for (const [dx, dy] of DIRS) {
+    const nx = g.x + dx, ny = g.y + dy;
+    if (!inb(nx, ny)) continue;
+    const n = I(nx, ny);
+    if (!walk(n) || S.t[n] === T.GATE) continue;
+    let w = n === g.pi ? 0.04 : 1;
+    if (viewMap[n] && viewMap[n].some(h => !g.seen[h])) w += 3;
+    opts.push([n, w]); tot += w;
+  }
+  if (!opts.length) { g.state = 'use'; g.useT = 0.5; g.goal = null; return; }
+  let r = Math.random() * tot;
+  for (const [n, w] of opts) { r -= w; if (r <= 0) return stepTo(g, n); }
+  stepTo(g, opts[opts.length - 1][0]);
+}
+function useShop(g) {
+  let b = null;
+  for (const [dx, dy] of DIRS) {
+    if (!inb(g.x + dx, g.y + dy)) continue;
+    const c = bldById.get(S.bld[I(g.x + dx, g.y + dy)]);
+    if (c && SHOPS[c.type].need === g.goal) { b = c; break; }
+  }
+  if (!b) { g.state = 'wander'; return; }
+  const shop = SHOPS[b.type];
+  if (g.money < shop.price) { think(g, 'I can\'t afford anything here.'); g.happy -= 4; g.fails[g.goal] = g.time; g.state = 'wander'; return; }
+  g.money -= shop.price; S.money += shop.price; S.today.shops += shop.price; b.rev += shop.price;
+  g.state = 'use'; g.useT = g.goal === 'energy' ? 4 : 1.5; g.useB = b.id;
+}
+function finishUse(g) {
+  const k = g.goal;
+  if (k === 'hunger') { g.hunger = 0; g.happy += 4; g.litterT = 2 + ((Math.random() * 5) | 0); think(g, 'That hit the spot.'); }
+  else if (k === 'thirst') { g.thirst = 0; g.happy += 3; g.litterT = 2 + ((Math.random() * 5) | 0); think(g, 'Ahh, refreshing.'); }
+  else if (k === 'energy') { g.energy = 0; g.happy += 3; think(g, 'A nice rest.'); }
+  else if (k === 'bladder') { g.bladder = 0; g.happy += 2; think(g, 'What a relief.'); }
+  else if (k === 'shop') { g.happy += 6; think(g, 'I got a plush souvenir!'); }
+  g.goal = null; g.useB = null;
+  g.state = g.gift && k === 'shop' ? 'leave' : 'wander';
+  if (g.state === 'leave') startLeave(g);
+}
+
+/* ---- animals ---- */
+function pickTarget(a, h) { a.tx = rnd(h.x + 0.6, h.x + h.w - 0.6); a.ty = rnd(h.y + 0.7, h.y + h.h - 0.4); }
+function updAnimal(a, dt) {
+  const h = habById.get(a.hab); if (!h) return;
+  if (a.wait > 0) a.wait -= dt;
+  else {
+    const dx = a.tx - a.x, dy = a.ty - a.y, d = Math.hypot(dx, dy);
+    if (d < 0.05) { a.wait = rnd(1, 5); pickTarget(a, h); }
+    else {
+      const s = Math.min(d, (a.baby ? 0.9 : 0.7) * dt);
+      a.x += dx / d * s; a.y += dy / d * s;
+      if (Math.abs(dx) > 0.02) a.dir = dx > 0 ? 1 : -1;
+    }
+  }
+  a.happy += (a.target - a.happy) * Math.min(1, dt * 0.15);
+}
+function habStats() {
+  const groups = new Map();
+  for (const a of S.animals) { (groups.get(a.hab) || groups.set(a.hab, []).get(a.hab)).push(a); }
+  for (const h of S.habs) {
+    const list = groups.get(h.id) || [];
+    let enrich = 0;
+    for (let y = h.y; y < h.y + h.h; y++) for (let x = h.x; x < h.x + h.w; x++) { const d = S.decor[I(x, y)]; if (d) enrich += DECOR[d].enrich; }
+    const need = list.reduce((s, a) => s + SPECIES[a.sp].space * (a.baby ? .5 : 1), 0);
+    h.space = need ? (h.w * h.h) / need : 9; h.enrich = enrich; h.count = list.length;
+    const preds = new Set(list.filter(a => SPECIES[a.sp].pred).map(a => a.sp));
+    for (const a of list) {
+      const sp = SPECIES[a.sp], R = [];
+      let t = 52;
+      if (sp.biome === h.biome) { t += 15; R.push(['Right habitat', 1]); } else { t -= 35; R.push(['Wrong habitat type', 0]); }
+      if (h.food < 25) { t -= 30; R.push(['Hungry', 0]); } else if (h.food < 50) { t -= 10; R.push(['Peckish', 0]); } else R.push(['Well fed', 1]);
+      if (h.clean < 30) { t -= 20; R.push(['Filthy enclosure', 0]); } else if (h.clean < 60) t -= 5;
+      if (h.space >= 1) { t += 12; R.push(['Plenty of space', 1]); } else { t -= (1 - h.space) * 45; R.push(['Cramped', 0]); }
+      const er = Math.min(1, enrich / (list.length * 2));
+      t += 16 * er; if (enrich === 0) { t -= 10; R.push(['Bored', 0]); } else if (er > 0.7) R.push(['Stimulated', 1]);
+      const same = list.filter(o => o.sp === a.sp).length;
+      if (sp.social && same === 1) { t -= 14; R.push(['Lonely', 0]); }
+      if (!sp.social && same > 2) { t -= 12; R.push(['Too many rivals', 0]); }
+      if (!sp.pred && preds.size) { t -= 30; R.push(['Scared of predators', 0]); }
+      if (sp.pred && [...preds].some(p => p !== a.sp)) { t -= 12; R.push(['Rival predators', 0]); }
+      a.target = clamp(t, 0, 100); a.reasons = R;
+    }
+  }
+}
+
+/* ---- staff ---- */
+function updStaff(f, dt) {
+  if (f.work > 0) { f.work -= dt; if (f.work <= 0) finishWork(f); return; }
+  if (f.tx == null) chooseJob(f);
+  if (f.tx == null) return;
+  const dx = f.tx - f.x, dy = f.ty - f.y, d = Math.hypot(dx, dy), s = 3 * dt;
+  if (d <= s) { f.x = f.tx; f.y = f.ty; f.work = f.job === 'idle' ? rnd(1.5, 3) : f.type === 'keeper' ? 2.5 : 0.8; }
+  else { f.x += dx / d * s; f.y += dy / d * s; }
+}
+function chooseJob(f) {
+  if (f.type === 'keeper') {
+    const taken = new Set(S.staff.filter(o => o !== f && o.job === 'hab').map(o => o.target));
+    let best = null, bv = 70;
+    for (const h of S.habs) {
+      if (!h.count || taken.has(h.id)) continue;
+      const v = Math.min(h.food, h.clean);
+      if (v < bv) { bv = v; best = h; }
+    }
+    if (best) { f.job = 'hab'; f.target = best.id; f.tx = best.x + best.w / 2; f.ty = best.y + best.h / 2; return; }
+  } else {
+    const taken = new Set(S.staff.filter(o => o !== f && o.job === 'litter').map(o => o.target));
+    let best = -1, bd = 1e9;
+    for (let i = 0; i < W * H; i++) {
+      if (!S.litter[i] || taken.has(i)) continue;
+      const d = Math.abs(i % W + .5 - f.x) + Math.abs(((i / W) | 0) + .5 - f.y);
+      if (d < bd) { bd = d; best = i; }
+    }
+    if (best >= 0) { f.job = 'litter'; f.target = best; f.tx = best % W + .5; f.ty = ((best / W) | 0) + .5; return; }
+  }
+  // idle: stroll to a random path tile nearby
+  const cands = [];
+  for (let k = 0; k < 30; k++) {
+    const x = clamp(Math.round(f.x + rnd(-6, 6)), 0, W - 1), y = clamp(Math.round(f.y + rnd(-6, 6)), 0, H - 1);
+    if (walk(I(x, y))) cands.push([x, y]);
+  }
+  if (cands.length) { const [x, y] = pick(cands); f.job = 'idle'; f.target = null; f.tx = x + .5; f.ty = y + .5; }
+}
+function finishWork(f) {
+  if (f.job === 'hab') {
+    const h = habById.get(f.target);
+    if (h) {
+      const cost = Math.round(4 * (h.count || 0) * (100 - h.food) / 100);
+      S.money -= cost; S.today.feed += cost; h.food = 100; h.clean = 100;
+    }
+  } else if (f.job === 'litter') S.litter[f.target] = 0;
+  f.job = null; f.target = null; f.tx = null; f.ty = null;
+}
+
+/* ---- rating, days, goals ---- */
+function rate() {
+  const n = S.animals.length;
+  const ah = n ? S.animals.reduce((s, a) => s + a.happy, 0) / n : 0;
+  const gh = S.leaveHappy.length ? S.leaveHappy.reduce((s, v) => s + v, 0) / S.leaveHappy.length
+    : S.guests.length ? S.guests.reduce((s, g) => s + g.happy, 0) / S.guests.length : 60;
+  let lit = 0, paths = 0;
+  for (let i = 0; i < W * H; i++) { if (S.t[i] === T.PATH) paths++; lit += S.litter[i]; }
+  const cleanF = clamp(1 - lit / (paths * 0.12 + 3), 0, 1);
+  const amen = (hasNeedShop('hunger') + hasNeedShop('thirst') + hasNeedShop('bladder')) / 3;
+  let target = (ah / 100) * Math.sqrt(Math.min(1, n / 20)) * 1.6 + (gh / 100) * 1.0 + Math.min(1, speciesCount() / 12) * 1.8 + cleanF * 0.3 + amen * 0.3;
+  if (!n) target = Math.min(target, 1);
+  S.stars += (clamp(target, 0, 5) - S.stars) * 0.12;
+  S.rating = { ah, gh, cleanF, amen };
+}
+function endDay() {
+  const wages = S.staff.reduce((s, f) => s + STAFF[f.type].wage, 0);
+  const upkeep = S.blds.reduce((s, b) => s + SHOPS[b.type].upkeep, 0) + S.animals.reduce((s, a) => s + Math.round(SPECIES[a.sp].cost * 0.006), 0);
+  S.money -= wages + upkeep;
+  S.today.wages = wages; S.today.upkeep = upkeep;
+  // babies & ageing
+  for (const a of S.animals) { a.age++; if (a.baby && a.age >= 3) a.baby = false; }
+  for (const h of S.habs) {
+    const list = S.animals.filter(a => a.hab === h.id);
+    const bySp = {};
+    for (const a of list) (bySp[a.sp] ||= []).push(a);
+    for (const sp in bySp) {
+      const g = bySp[sp], adults = g.filter(a => !a.baby);
+      if (adults.length < 2 || g.length >= 8 || h.space < 1.05) continue;
+      const avg = g.reduce((s, a) => s + a.happy, 0) / g.length;
+      if (avg > 72 && Math.random() < 0.3) {
+        const mom = adults[0];
+        const b = createAnimal(sp, h, mom.x, mom.y, true);
+        S.babies++;
+        toast(`A baby ${SPECIES[sp].name.toLowerCase()} named ${b.name} was born in ${h.name}!`, 'good');
+      }
+    }
+  }
+  const t = S.today;
+  const inc = t.admission + t.shops, exp = t.wages + t.upkeep + t.feed;
+  S.yesterday = t; S.today = newLedger(); S.day++;
+  toast(`Day ${S.day - 1} closed: ${t.visitors} visitors, ${inc - exp >= 0 ? 'profit' : 'loss'} of ${fmt(Math.abs(inc - exp))}.`, inc - exp >= 0 ? 'good' : 'bad');
+  if (S.money < -5000) { gameOver(); return; }
+  if (S.money < 0) toast('The zoo is in debt. Cut costs or raise income soon.', 'bad');
+  save(true);
+}
+function checkGoals() {
+  for (const g of GOALS) {
+    if (S.goals[g.id]) continue;
+    if (g.check(S)) {
+      S.goals[g.id] = 1; S.money += g.reward;
+      toast(`Goal complete: ${g.text}${g.reward ? ` (+${fmt(g.reward)})` : ''}`, 'good');
+    }
+  }
+}
+
+/* ================= player actions ================= */
+function canAfford(n) { if (S.money >= n) return true; toast(`Not enough cash. You need ${fmt(n)}.`, 'bad'); return false; }
+function hasAdjPath(x, y) { return DIRS.some(([dx, dy]) => inb(x + dx, y + dy) && walk(I(x + dx, y + dy))); }
+
+function validTile(kind, arg, x, y) {
+  if (!inb(x, y)) return false;
+  const i = I(x, y), t = S.t[i];
+  switch (kind) {
+    case 'path': return t === T.GRASS;
+    case 'bld': return t === T.GRASS && hasAdjPath(x, y);
+    case 'decor': return (t === T.GRASS || t === T.HAB) && !S.decor[i];
+    case 'animal': return t === T.HAB && starLevel() >= SPECIES[arg].stars;
+    case 'bulldoze': return t === T.PATH || t === T.BLD || t === T.HAB || !!S.decor[i];
+  }
+  return false;
+}
+function habRectValid(r) {
+  if (r.w < 3 || r.h < 3) return 'Habitats must be at least 3×3.';
+  for (let y = r.y; y < r.y + r.h; y++) for (let x = r.x; x < r.x + r.w; x++) {
+    if (!inb(x, y) || S.t[I(x, y)] !== T.GRASS) return 'Habitats can only go on open grass.';
+  }
+  return '';
+}
+function applyTile(x, y, quiet) {
+  if (!inb(x, y)) return;
+  const i = I(x, y), k = tool.kind, a = tool.arg;
+  if (k === 'path') {
+    if (!validTile('path', a, x, y)) return;
+    if (S.money < 10) return quiet || toast('Not enough cash for path.', 'bad');
+    S.t[i] = T.PATH; S.decor[i] = null; spend(10); staticDirty = cachesDirty = true;
+  } else if (k === 'bld') {
+    if (!validTile('bld', a, x, y)) return quiet || toast('Place shops on grass next to a path.', 'bad');
+    if (!canAfford(SHOPS[a].cost)) return;
+    createBuilding(a, x, y);
+  } else if (k === 'decor') {
+    if (!validTile('decor', a, x, y)) return;
+    if (S.money < DECOR[a].cost) return quiet || toast('Not enough cash.', 'bad');
+    S.decor[i] = a; spend(DECOR[a].cost); staticDirty = true;
+  } else if (k === 'animal') {
+    if (S.t[i] !== T.HAB) return toast('Adopt animals inside a habitat.', 'bad');
+    adopt(a, habById.get(S.hab[i]), x + .5, y + .5);
+  } else if (k === 'bulldoze') {
+    bulldoze(x, y, quiet);
+  }
+}
+function adopt(sp, h, x, y) {
+  const s = SPECIES[sp];
+  if (starLevel() < s.stars) return toast(`${s.name}s unlock at a ${s.stars}-star rating.`, 'bad');
+  if (!canAfford(s.cost)) return;
+  spend(s.cost);
+  const a = createAnimal(sp, h, x ?? h.x + h.w / 2, y ?? h.y + h.h / 2);
+  habStats();
+  if (s.biome !== h.biome) toast(`${s.name}s prefer ${BIOMES[s.biome].name.toLowerCase()} habitats.`, 'bad');
+  else toast(`${a.name} the ${s.name.toLowerCase()} joined ${h.name}.`);
+}
+function bulldoze(x, y, quiet) {
+  const i = I(x, y);
+  if (S.decor[i]) { S.decor[i] = null; staticDirty = true; return; }
+  if (S.t[i] === T.PATH) { S.t[i] = T.GRASS; S.litter[i] = 0; S.money += 5; staticDirty = cachesDirty = true; return; }
+  if (S.t[i] === T.BLD) return removeBuilding(bldById.get(S.bld[i]));
+  if (S.t[i] === T.HAB && !quiet) { const h = habById.get(S.hab[i]); sel = { kind: 'hab', id: h.id }; confirmDemo = h.id; renderPanel(true); }
+}
+function removeBuilding(b) {
+  if (!b) return;
+  const i = I(b.x, b.y);
+  S.t[i] = T.GRASS; S.bld[i] = 0;
+  S.blds = S.blds.filter(q => q !== b); bldById.delete(b.id);
+  S.money += Math.round(SHOPS[b.type].cost * 0.5);
+  if (sel && sel.kind === 'bld' && sel.id === b.id) sel = null;
+  staticDirty = cachesDirty = true;
+}
+function removeHabitat(h) {
+  const list = S.animals.filter(a => a.hab === h.id);
+  const refund = list.reduce((s, a) => s + SPECIES[a.sp].cost * 0.5, 0);
+  S.animals = S.animals.filter(a => a.hab !== h.id);
+  for (let y = h.y; y < h.y + h.h; y++) for (let x = h.x; x < h.x + h.w; x++) { const i = I(x, y); S.t[i] = T.GRASS; S.hab[i] = 0; }
+  S.habs = S.habs.filter(q => q !== h); habById.delete(h.id);
+  S.money += refund;
+  for (const f of S.staff) if (f.job === 'hab' && f.target === h.id) { f.job = null; f.tx = null; f.work = 0; }
+  if (list.length) toast(`${list.length} animal${list.length > 1 ? 's were' : ' was'} rehomed to a sanctuary (+${fmt(refund)}).`);
+  sel = null; confirmDemo = null;
+  staticDirty = cachesDirty = true;
+}
+function hire(type) {
+  const s = STAFF[type];
+  if (!canAfford(s.hire)) return;
+  spend(s.hire);
+  S.staff.push({ id: S.nid++, type, x: GATE_X + .5, y: GATE_Y + .5, tx: null, ty: null, job: null, target: null, work: 0, name: pick(NAMES) });
+  toast(`Hired ${S.staff[S.staff.length - 1].name} as a ${s.name.toLowerCase()}. Wage ${fmt(s.wage)}/day.`);
+  buildTools();
+}
+function fire(id) {
+  S.staff = S.staff.filter(f => f.id !== id);
+  if (sel && sel.kind === 'staff' && sel.id === id) sel = null;
+  buildTools();
+}
+
+/* ================= rendering ================= */
+const view = document.getElementById('view');
+const cv = document.getElementById('cv');
+const ctx = cv.getContext('2d');
+const stc = document.createElement('canvas'), SR = 2;
+stc.width = W * TS * SR; stc.height = H * TS * SR;
+const sctx = stc.getContext('2d');
+let dpr = 1, cw = 0, ch = 0, base = 1;
+const cam = { z: 1, cx: W * TS / 2, cy: H * TS / 2 };
+
+const ecache = {};
+function emo(e) {
+  if (ecache[e]) return ecache[e];
+  const c = document.createElement('canvas'); c.width = c.height = 80;
+  const x = c.getContext('2d');
+  x.font = '60px "Apple Color Emoji","Segoe UI Emoji","Noto Color Emoji","Twemoji Mozilla",sans-serif';
+  x.textAlign = 'center'; x.textBaseline = 'middle';
+  x.fillText(e, 40, 44);
+  return (ecache[e] = c);
+}
+function drawEmo(g, e, cx, cy, size, flip) {
+  const c = emo(e);
+  if (flip) { g.save(); g.translate(cx, cy); g.scale(-1, 1); g.drawImage(c, -size / 2, -size / 2, size, size); g.restore(); }
+  else g.drawImage(c, cx - size / 2, cy - size / 2, size, size);
+}
+function rr(g, x, y, w, h, r) { g.beginPath(); g.moveTo(x + r, y); g.arcTo(x + w, y, x + w, y + h, r); g.arcTo(x + w, y + h, x, y + h, r); g.arcTo(x, y + h, x, y, r); g.arcTo(x, y, x + w, y, r); g.closePath(); }
+
+function drawStatic() {
+  const g = sctx;
+  g.setTransform(SR, 0, 0, SR, 0, 0);
+  for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) {
+    const i = I(x, y), t = S.t[i], hs = hash(x, y), px = x * TS, py = y * TS;
+    if (t === T.PATH || t === T.GATE) {
+      g.fillStyle = hs % 3 ? '#d8c9a7' : '#d2c19c'; g.fillRect(px, py, TS, TS);
+      g.fillStyle = 'rgba(120,96,60,.18)';
+      for (let k = 0; k < 3; k++) { const h2 = hash(x * 7 + k, y * 13 - k); g.fillRect(px + h2 % 17 + 1, py + (h2 >> 5) % 17 + 1, 2, 2); }
+    } else if (t === T.HAB) {
+      const b = BIOMES[habById.get(S.hab[i]).biome];
+      g.fillStyle = hs % 4 ? b.color : b.alt; g.fillRect(px, py, TS, TS);
+      g.fillStyle = b.tuft;
+      for (let k = 0; k < 2; k++) { const h2 = hash(x * 5 + k, y * 11 + k); g.fillRect(px + h2 % 16 + 2, py + (h2 >> 6) % 16 + 2, 2, 3); }
+    } else {
+      g.fillStyle = hs % 5 ? '#79a95c' : '#71a155'; g.fillRect(px, py, TS, TS);
+      g.fillStyle = '#5f8f46';
+      for (let k = 0; k < 2; k++) { const h2 = hash(x * 3 + k, y * 17 + k); g.fillRect(px + h2 % 16 + 2, py + (h2 >> 7) % 16 + 2, 2, 3); }
+    }
+  }
+  // path edges
+  g.fillStyle = 'rgba(90,70,40,.35)';
+  for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) {
+    if (!walk(I(x, y))) continue;
+    const px = x * TS, py = y * TS;
+    if (!inb(x, y - 1) || !walk(I(x, y - 1))) g.fillRect(px, py, TS, 1.5);
+    if (!inb(x, y + 1) || !walk(I(x, y + 1))) g.fillRect(px, py + TS - 1.5, TS, 1.5);
+    if (!inb(x - 1, y) || !walk(I(x - 1, y))) g.fillRect(px, py, 1.5, TS);
+    if (!inb(x + 1, y) || !walk(I(x + 1, y))) g.fillRect(px + TS - 1.5, py, 1.5, TS);
+  }
+  // water holes
+  for (let i = 0; i < W * H; i++) if (S.decor[i] === 'pond') {
+    const px = (i % W) * TS, py = ((i / W) | 0) * TS;
+    g.fillStyle = '#3f86b8'; rr(g, px + 1.5, py + 2.5, TS - 3, TS - 4, 7); g.fill();
+    g.fillStyle = 'rgba(255,255,255,.35)'; g.fillRect(px + 5, py + 7, 6, 1.5); g.fillRect(px + 9, py + 12, 5, 1.5);
+  }
+  // fences
+  for (const h of S.habs) {
+    g.strokeStyle = '#5a3f22'; g.lineWidth = 2.6; g.lineCap = 'round';
+    g.beginPath(); g.rect(h.x * TS + 1, h.y * TS + 1, h.w * TS - 2, h.h * TS - 2); g.stroke();
+    g.strokeStyle = 'rgba(214,180,120,.6)'; g.lineWidth = 0.8;
+    g.beginPath(); g.rect(h.x * TS + 1, h.y * TS + 1, h.w * TS - 2, h.h * TS - 2); g.stroke();
+    g.fillStyle = '#3e2a14';
+    for (let x = h.x; x <= h.x + h.w; x++) { g.fillRect(x * TS - 1.5 + (x === h.x ? 1 : x === h.x + h.w ? -1 : 0), h.y * TS - .5, 3, 3); g.fillRect(x * TS - 1.5 + (x === h.x ? 1 : x === h.x + h.w ? -1 : 0), (h.y + h.h) * TS - 2.5, 3, 3); }
+    for (let y = h.y; y <= h.y + h.h; y++) { g.fillRect(h.x * TS - .5, y * TS - 1.5 + (y === h.y ? 1 : y === h.y + h.h ? -1 : 0), 3, 3); g.fillRect((h.x + h.w) * TS - 2.5, y * TS - 1.5 + (y === h.y ? 1 : y === h.y + h.h ? -1 : 0), 3, 3); }
+  }
+  // decor (sorted by y for overlap)
+  for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) {
+    const d = S.decor[I(x, y)];
+    if (!d || d === 'pond') continue;
+    const big = d === 'tree' || d === 'pine' || d === 'palm';
+    drawEmo(g, DECOR[d].e, x * TS + TS / 2, y * TS + TS / 2 - (big ? 3 : 0), big ? TS * 1.25 : TS * .85);
+  }
+  // buildings
+  for (const b of S.blds) {
+    const s = SHOPS[b.type], px = b.x * TS, py = b.y * TS;
+    if (s.color) {
+      g.fillStyle = 'rgba(0,0,0,.25)'; rr(g, px + 1.5, py + 2.5, TS - 2, TS - 2, 4); g.fill();
+      g.fillStyle = s.color; rr(g, px + 1, py + 1, TS - 2, TS - 2, 4); g.fill();
+      // awning stripes
+      g.fillStyle = 'rgba(255,255,255,.55)';
+      for (let k = 0; k < 4; k++) g.fillRect(px + 2 + k * 4.5, py + 1, 2.2, 3.5);
+      drawEmo(g, s.e, px + TS / 2, py + TS / 2 + 2, TS * .72);
+    } else drawEmo(g, s.e, px + TS / 2, py + TS / 2, TS * .8);
+  }
+  // gate
+  const gx = GATE_X * TS, gy = GATE_Y * TS;
+  g.fillStyle = '#5a3f22'; g.fillRect(gx - 4, gy - 10, 4, TS + 10); g.fillRect(gx + TS, gy - 10, 4, TS + 10);
+  g.fillStyle = '#f2c14e'; rr(g, gx - 14, gy - 15, TS + 28, 9, 2); g.fill();
+  g.fillStyle = '#2a2208'; g.font = '700 6.5px "Nunito Sans",sans-serif'; g.textAlign = 'center'; g.textBaseline = 'middle';
+  g.fillText('WILD ACRES', gx + TS / 2, gy - 10.3);
+  staticDirty = false;
+}
+
+function resize() {
+  const r = view.getBoundingClientRect();
+  dpr = Math.min(2, window.devicePixelRatio || 1);
+  if (r.width === cw && r.height === ch && cv.width === Math.round(r.width * dpr)) return;
+  cw = r.width; ch = r.height;
+  cv.width = Math.max(1, Math.round(cw * dpr)); cv.height = Math.max(1, Math.round(ch * dpr));
+  base = Math.min(cw / (W * TS), ch / (H * TS));
+  clampCam();
+}
+function scale() { return base * cam.z; }
+function clampCam() {
+  const s = scale(), vw = cw / s, vh = ch / s;
+  cam.cx = vw >= W * TS ? W * TS / 2 : clamp(cam.cx, vw / 2, W * TS - vw / 2);
+  cam.cy = vh >= H * TS ? H * TS / 2 : clamp(cam.cy, vh / 2, H * TS - vh / 2);
+}
+function toWorld(sx, sy) { const s = scale(); return [(sx - cw / 2) / s + cam.cx, (sy - ch / 2) / s + cam.cy]; }
+function zoomAt(f, sx, sy) {
+  const [wx, wy] = toWorld(sx, sy);
+  cam.z = clamp(cam.z * f, 1, 4);
+  const s = scale();
+  cam.cx = wx - (sx - cw / 2) / s; cam.cy = wy - (sy - ch / 2) / s;
+  clampCam();
+}
+
+function render() {
+  resize();
+  if (staticDirty) drawStatic();
+  ctx.setTransform(1, 0, 0, 1, 0, 0);
+  ctx.fillStyle = '#121b16'; ctx.fillRect(0, 0, cv.width, cv.height);
+  const s = scale() * dpr;
+  ctx.setTransform(s, 0, 0, s, (cw / 2 - cam.cx * scale()) * dpr, (ch / 2 - cam.cy * scale()) * dpr);
+  ctx.imageSmoothingEnabled = true;
+  ctx.drawImage(stc, 0, 0, W * TS, H * TS);
+
+  // litter
+  for (let i = 0; i < W * H; i++) {
+    const l = S.litter[i]; if (!l) continue;
+    const px = (i % W) * TS, py = ((i / W) | 0) * TS;
+    for (let k = 0; k < l; k++) {
+      const h = hash(i, k);
+      ctx.fillStyle = k % 2 ? '#f4f1e8' : '#c94f3d';
+      ctx.fillRect(px + 3 + h % 13, py + 3 + (h >> 4) % 13, 3, 2.2);
+    }
+  }
+  // selection highlight
+  if (sel && sel.kind === 'hab') {
+    const h = habById.get(sel.id);
+    if (h) { ctx.strokeStyle = '#f2c14e'; ctx.lineWidth = 2; ctx.setLineDash([5, 4]); ctx.strokeRect(h.x * TS - 2, h.y * TS - 2, h.w * TS + 4, h.h * TS + 4); ctx.setLineDash([]); }
+  }
+  if (sel && sel.kind === 'bld') {
+    const b = bldById.get(sel.id);
+    if (b) { ctx.strokeStyle = '#f2c14e'; ctx.lineWidth = 2; ctx.strokeRect(b.x * TS - 1, b.y * TS - 1, TS + 2, TS + 2); }
+  }
+  // animals
+  const an = S.animals.slice().sort((a, b) => a.y - b.y);
+  for (const a of an) {
+    const sp = SPECIES[a.sp], size = TS * 1.05 * sp.size * (a.baby ? .62 : 1);
+    const px = a.x * TS, py = a.y * TS;
+    ctx.fillStyle = 'rgba(0,0,0,.22)';
+    ctx.beginPath(); ctx.ellipse(px, py + size * .32, size * .32, size * .1, 0, 0, Math.PI * 2); ctx.fill();
+    const bob = a.wait > 0 ? 0 : Math.sin(perfNow / 140 + a.id) * .8;
+    drawEmo(ctx, sp.e, px, py + bob, size, a.dir > 0);
+    if (sel && sel.kind === 'animal' && sel.id === a.id) {
+      ctx.strokeStyle = '#f2c14e'; ctx.lineWidth = 1.6; ctx.beginPath(); ctx.ellipse(px, py + size * .32, size * .45, size * .17, 0, 0, Math.PI * 2); ctx.stroke();
+    }
+    if (a.happy < 30) drawEmo(ctx, '💢', px + size * .35, py - size * .45, TS * .55);
+  }
+  // staff
+  for (const f of S.staff) {
+    const px = f.x * TS, py = f.y * TS, st = STAFF[f.type];
+    ctx.fillStyle = 'rgba(0,0,0,.25)'; ctx.beginPath(); ctx.ellipse(px, py + 6, 5, 2, 0, 0, 7); ctx.fill();
+    ctx.fillStyle = st.color; ctx.beginPath(); ctx.arc(px, py, 5.2, 0, 7); ctx.fill();
+    ctx.strokeStyle = '#fff'; ctx.lineWidth = 1.2; ctx.stroke();
+    ctx.fillStyle = '#fff'; ctx.font = '800 6.5px "Nunito Sans",sans-serif'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+    ctx.fillText(st.letter, px, py + .3);
+    if (sel && sel.kind === 'staff' && sel.id === f.id) { ctx.strokeStyle = '#f2c14e'; ctx.lineWidth = 1.5; ctx.beginPath(); ctx.arc(px, py, 8, 0, 7); ctx.stroke(); }
+  }
+  // guests
+  for (const g of S.guests) {
+    const [gx, gy] = guestPos(g);
+    const px = gx * TS, py = gy * TS;
+    ctx.fillStyle = `hsl(${g.hue} 62% 52%)`;
+    ctx.beginPath(); ctx.arc(px, py + 1.2, 2.9, 0, 7); ctx.fill();
+    ctx.fillStyle = '#f1cfa8'; ctx.beginPath(); ctx.arc(px, py - 2.4, 1.8, 0, 7); ctx.fill();
+    if (sel && sel.kind === 'guest' && sel.id === g.id) { ctx.strokeStyle = '#f2c14e'; ctx.lineWidth = 1.4; ctx.beginPath(); ctx.arc(px, py, 6, 0, 7); ctx.stroke(); }
+  }
+  drawPreview();
+  // day / night
+  const t = S.time;
+  const day = clamp(Math.min((t - 0.17) / 0.09, (0.95 - t) / 0.09), 0, 1);
+  if (day < 1) {
+    ctx.setTransform(1, 0, 0, 1, 0, 0);
+    ctx.fillStyle = `rgba(12,22,60,${(0.5 * (1 - day)).toFixed(3)})`;
+    ctx.fillRect(0, 0, cv.width, cv.height);
+  }
+}
+function guestPos(g) {
+  const x = g.moving ? g.x + (g.nx - g.x) * g.p : g.x, y = g.moving ? g.y + (g.ny - g.y) * g.p : g.y;
+  return [x + .5 + g.ox, y + .5 + g.oy];
+}
+function drawPreview() {
+  if (dragRect) {
+    const r = normRect(dragRect), bad = habRectValid(r);
+    ctx.fillStyle = bad ? 'rgba(238,113,108,.35)' : BIOMES[tool.arg].color + 'aa';
+    ctx.fillRect(r.x * TS, r.y * TS, r.w * TS, r.h * TS);
+    ctx.strokeStyle = bad ? '#ee716c' : '#5a3f22'; ctx.lineWidth = 2; ctx.strokeRect(r.x * TS + 1, r.y * TS + 1, r.w * TS - 2, r.h * TS - 2);
+    return;
+  }
+  if (!hover || tool.kind === 'select') return;
+  const [x, y] = hover;
+  if (!inb(x, y)) return;
+  if (tool.kind === 'hab') { ctx.strokeStyle = '#f2c14e'; ctx.lineWidth = 1.5; ctx.strokeRect(x * TS + 1, y * TS + 1, TS - 2, TS - 2); return; }
+  const ok = validTile(tool.kind, tool.arg, x, y);
+  if (tool.kind === 'bulldoze') { ctx.fillStyle = ok ? 'rgba(238,113,108,.45)' : 'rgba(255,255,255,.12)'; ctx.fillRect(x * TS, y * TS, TS, TS); return; }
+  if (ok && tool.kind === 'bld') { ctx.globalAlpha = .7; drawEmo(ctx, SHOPS[tool.arg].e, x * TS + TS / 2, y * TS + TS / 2, TS * .8); ctx.globalAlpha = 1; }
+  if (ok && tool.kind === 'decor' && DECOR[tool.arg].e) { ctx.globalAlpha = .7; drawEmo(ctx, DECOR[tool.arg].e, x * TS + TS / 2, y * TS + TS / 2, TS); ctx.globalAlpha = 1; }
+  if (ok && tool.kind === 'animal') { ctx.globalAlpha = .75; drawEmo(ctx, SPECIES[tool.arg].e, x * TS + TS / 2, y * TS + TS / 2, TS * 1.1); ctx.globalAlpha = 1; }
+  ctx.strokeStyle = ok ? '#7fd08a' : '#ee716c'; ctx.lineWidth = 1.6; ctx.strokeRect(x * TS + 1, y * TS + 1, TS - 2, TS - 2);
+}
+function normRect(d) { const x = Math.min(d.x0, d.x1), y = Math.min(d.y0, d.y1); return { x, y, w: Math.abs(d.x1 - d.x0) + 1, h: Math.abs(d.y1 - d.y0) + 1 }; }
+
+/* ================= input ================= */
+let ptr = null;
+function evTile(e) {
+  const r = cv.getBoundingClientRect();
+  const [wx, wy] = toWorld(e.clientX - r.left, e.clientY - r.top);
+  return [Math.floor(wx / TS), Math.floor(wy / TS), wx / TS, wy / TS];
+}
+cv.addEventListener('pointerdown', e => {
+  if (!running) return;
+  cv.setPointerCapture(e.pointerId);
+  const [x, y, fx, fy] = evTile(e);
+  ptr = { id: e.pointerId, sx: e.clientX, sy: e.clientY, cx: cam.cx, cy: cam.cy, moved: false, lx: x, ly: y, pan: e.button === 1 || e.button === 2 || tool.kind === 'select' };
+  if (e.button !== 0) return;
+  if (tool.kind === 'hab') dragRect = { x0: x, y0: y, x1: x, y1: y };
+  else if (tool.kind === 'path' || tool.kind === 'bulldoze' || tool.kind === 'decor') applyTile(x, y, false);
+  else if (tool.kind === 'bld' || tool.kind === 'animal') { /* placed on release */ }
+});
+cv.addEventListener('pointermove', e => {
+  const [x, y] = evTile(e);
+  hover = [x, y];
+  updateHint();
+  if (!ptr || ptr.id !== e.pointerId) return;
+  const dx = e.clientX - ptr.sx, dy = e.clientY - ptr.sy;
+  if (Math.hypot(dx, dy) > 6) ptr.moved = true;
+  if (ptr.pan && ptr.moved) { const s = scale(); cam.cx = ptr.cx - dx / s; cam.cy = ptr.cy - dy / s; clampCam(); return; }
+  if (dragRect) { dragRect.x1 = clamp(x, 0, W - 1); dragRect.y1 = clamp(y, 0, H - 1); return; }
+  if ((tool.kind === 'path' || tool.kind === 'bulldoze' || tool.kind === 'decor') && (x !== ptr.lx || y !== ptr.ly)) {
+    // fill along the line so fast drags leave no gaps
+    const n = Math.max(Math.abs(x - ptr.lx), Math.abs(y - ptr.ly));
+    for (let k = 1; k <= n; k++) applyTile(Math.round(ptr.lx + (x - ptr.lx) * k / n), Math.round(ptr.ly + (y - ptr.ly) * k / n), true);
+    ptr.lx = x; ptr.ly = y;
+  }
+});
+cv.addEventListener('pointerup', e => {
+  if (!ptr || ptr.id !== e.pointerId) return;
+  const [x, y, fx, fy] = evTile(e);
+  if (dragRect) {
+    const r = normRect(dragRect); dragRect = null;
+    const bad = habRectValid(r);
+    if (bad) toast(bad, 'bad');
+    else if (canAfford(r.w * r.h * 20)) { const h = createHabitat(r.x, r.y, r.w, r.h, tool.arg); sel = { kind: 'hab', id: h.id }; toast(`Built ${h.name} (${r.w}×${r.h}). Now adopt some animals.`); }
+  } else if (!ptr.moved && e.button === 0) {
+    if (tool.kind === 'select') selectAt(fx, fy, x, y);
+    else if (tool.kind === 'bld' || tool.kind === 'animal') applyTile(x, y, false);
+  }
+  ptr = null;
+});
+cv.addEventListener('pointercancel', () => { ptr = null; dragRect = null; });
+cv.addEventListener('pointerleave', () => { hover = null; updateHint(); });
+cv.addEventListener('contextmenu', e => e.preventDefault());
+cv.addEventListener('wheel', e => {
+  e.preventDefault();
+  const r = cv.getBoundingClientRect();
+  zoomAt(e.deltaY < 0 ? 1.15 : 1 / 1.15, e.clientX - r.left, e.clientY - r.top);
+}, { passive: false });
+document.getElementById('zIn').onclick = () => zoomAt(1.3, cw / 2, ch / 2);
+document.getElementById('zOut').onclick = () => zoomAt(1 / 1.3, cw / 2, ch / 2);
+window.addEventListener('keydown', e => {
+  if (!running || e.target.closest('input,textarea')) return;
+  if (e.key === 'Escape') { setTool('select'); sel = null; confirmDemo = null; renderPanel(true); }
+  if (e.key === ' ') { e.preventDefault(); setSpeed(S.speed ? 0 : 1); }
+  if (e.key === '1') setSpeed(1); if (e.key === '2') setSpeed(2); if (e.key === '3') setSpeed(4);
+});
+
+function selectAt(fx, fy, x, y) {
+  let best = null, bd = 0.7;
+  for (const g of S.guests) { const [gx, gy] = guestPos(g); const d = Math.hypot(gx - fx, gy - fy); if (d < bd * .6) { bd = d / .6; best = { kind: 'guest', id: g.id }; } }
+  for (const f of S.staff) { const d = Math.hypot(f.x - fx, f.y - fy); if (d < bd) { bd = d; best = { kind: 'staff', id: f.id }; } }
+  for (const a of S.animals) { const d = Math.hypot(a.x - fx, a.y - fy); if (d < bd) { bd = d; best = { kind: 'animal', id: a.id }; } }
+  if (!best && inb(x, y)) {
+    const i = I(x, y);
+    if (S.t[i] === T.HAB) best = { kind: 'hab', id: S.hab[i] };
+    else if (S.t[i] === T.BLD) best = { kind: 'bld', id: S.bld[i] };
+  }
+  sel = best; confirmDemo = null; renderPanel(true);
+}
+
+/* ================= UI ================= */
+const $ = id => document.getElementById(id);
+let tab = 'build';
+const TABS = {
+  build() {
+    return `
+      ${toolBtn('select', null, '👆', 'Inspect', 'Click anything for details; drag to pan', '')}
+      ${toolBtn('path', null, '<span class="swatch" style="background:#d8c9a7"></span>', 'Footpath', 'Drag to lay paths', '$10')}
+      ${toolBtn('bulldoze', null, '🚜', 'Bulldoze', 'Remove paths, shops, decor', '')}
+      <div class="group-lbl">Habitats · drag a rectangle</div>
+      ${Object.entries(BIOMES).map(([k, b]) => toolBtn('hab', k, `<span class="swatch" style="background:${b.color}"></span>`, `${b.name} habitat`, habFor(k), '$20/tile')).join('')}`;
+  },
+  animals() {
+    return `<p class="note">Pick a species, then click inside a habitat. Match the habitat type and give each animal room.</p>` +
+      Object.entries(SPECIES).map(([k, s]) => {
+        const locked = starLevel() < s.stars;
+        return toolBtn('animal', k, s.e, s.name, locked ? `Unlocks at ${s.stars}★` : `${BIOMES[s.biome].name} · appeal ${s.appeal}`, fmt(s.cost), locked, s.cost);
+      }).join('');
+  },
+  shops() {
+    return `<p class="note">Place on grass beside a path. Guests visit when hungry, thirsty, tired or need a restroom.</p>` +
+      Object.entries(SHOPS).map(([k, s]) => toolBtn('bld', k, s.e, s.name, s.price ? `Sells for ${fmt(s.price)}` : k === 'bin' ? 'Cuts litter nearby' : k === 'bench' ? 'Guests rest here' : 'Free for guests', fmt(s.cost), false, s.cost)).join('');
+  },
+  scenery() {
+    return `<p class="note">Decor inside a habitat counts as enrichment and keeps animals from getting bored.</p>` +
+      Object.entries(DECOR).map(([k, d]) => toolBtn('decor', k, d.e || '<span class="swatch" style="background:#3f86b8;border-color:#2c6a95"></span>', d.name, d.enrich ? `Enrichment +${d.enrich}` : 'Looks pretty', fmt(d.cost), false, d.cost)).join('');
+  },
+  staff() {
+    const rows = S.staff.map(f => `<div class="tool" style="cursor:default"><span class="ic" style="font-size:13px;font-weight:800;color:${STAFF[f.type].color}">${STAFF[f.type].letter}</span><span class="nm">${f.name}<small>${STAFF[f.type].name} · ${fmt(STAFF[f.type].wage)}/day</small></span><button class="btn danger" style="padding:3px 8px" data-act="fire" data-id="${f.id}">Fire</button></div>`).join('');
+    return Object.entries(STAFF).map(([k, s]) => `<button class="tool${S.money < s.hire ? ' poor' : ''}" data-act="hire" data-type="${k}"><span class="ic" style="font-size:14px;font-weight:800;color:${s.color}">${s.letter}</span><span class="nm">Hire ${s.name.toLowerCase()}<small>${s.desc} · ${fmt(s.wage)}/day</small></span><span class="pr">${fmt(s.hire)}</span></button>`).join('') +
+      `<div class="group-lbl">Your team (${S.staff.length})</div>${rows || '<p class="note">No staff yet. Without zookeepers you will need to feed habitats yourself.</p>'}`;
+  },
+};
+function habFor(b) { return Object.values(SPECIES).filter(s => s.biome === b).map(s => s.e).join(' '); }
+function toolBtn(kind, arg, ic, nm, sub, pr, locked, cost) {
+  const on = tool.kind === kind && tool.arg === arg;
+  const poor = cost && S.money < cost;
+  return `<button class="tool${locked ? ' locked' : ''}${poor ? ' poor' : ''}" data-tool="${kind}" data-arg="${arg ?? ''}" aria-pressed="${on}"><span class="ic">${ic}</span><span class="nm">${nm}<small>${sub}</small></span><span class="pr">${pr}</span></button>`;
+}
+function buildTools() { $('toolList').innerHTML = TABS[tab](); }
+function setTool(kind, arg = null) {
+  tool = { kind, arg }; dragRect = null;
+  cv.style.cursor = kind === 'select' ? 'grab' : 'crosshair';
+  buildTools(); updateHint();
+}
+$('tabs').addEventListener('click', e => {
+  const b = e.target.closest('[data-tab]'); if (!b) return;
+  tab = b.dataset.tab;
+  for (const t of $('tabs').children) t.setAttribute('aria-selected', t === b);
+  buildTools();
+});
+$('toolList').addEventListener('click', e => {
+  const b = e.target.closest('button'); if (!b) return;
+  if (b.dataset.act === 'hire') return hire(b.dataset.type);
+  if (b.dataset.act === 'fire') return fire(+b.dataset.id);
+  if (b.dataset.tool) {
+    const k = b.dataset.tool, a = b.dataset.arg || null;
+    if (tool.kind === k && tool.arg === a && k !== 'select') setTool('select'); else setTool(k, a);
+  }
+});
+function updateHint() {
+  let h = '';
+  const k = tool.kind;
+  if (k === 'select') h = '<b>Inspect:</b> click an animal, guest, habitat or shop. Drag to pan, scroll or use +/− to zoom.';
+  else if (k === 'path') h = '<b>Footpath:</b> drag across grass. $10 per tile. Guests only walk on paths.';
+  else if (k === 'bulldoze') h = '<b>Bulldoze:</b> click or drag. Clicking a habitat asks before demolishing it.';
+  else if (k === 'hab') {
+    if (dragRect) { const r = normRect(dragRect); h = `<b>${BIOMES[tool.arg].name} habitat</b> ${r.w}×${r.h} · ${fmt(r.w * r.h * 20)}`; }
+    else h = `<b>${BIOMES[tool.arg].name} habitat:</b> drag a rectangle on open grass, at least 3×3. Put it next to a path so guests can see in.`;
+  }
+  else if (k === 'bld') h = `<b>${SHOPS[tool.arg].name}</b> · ${fmt(SHOPS[tool.arg].cost)}. Click grass next to a path.`;
+  else if (k === 'decor') h = `<b>${DECOR[tool.arg].name}</b> · ${fmt(DECOR[tool.arg].cost)}. Click or drag to place.`;
+  else if (k === 'animal') { const s = SPECIES[tool.arg]; h = `<b>${s.name}</b> · ${fmt(s.cost)}. Needs a ${BIOMES[s.biome].name.toLowerCase()} habitat with ${s.space} tiles each${s.social ? ', likes company' : ', prefers to live alone or in pairs'}${s.pred ? ', will scare prey' : ''}.`; }
+  if ($('hint').innerHTML !== h) $('hint').innerHTML = h;
+}
+
+function bar(label, v, inv) {
+  const c = v > 60 ? 'var(--good)' : v > 30 ? 'var(--warn)' : 'var(--bad)';
+  const c2 = inv ? (v < 40 ? 'var(--good)' : v < 70 ? 'var(--warn)' : 'var(--bad)') : c;
+  return `<div class="meter"><div class="row"><span>${label}</span><b>${Math.round(v)}%</b></div><div class="bar"><i style="width:${clamp(v, 0, 100)}%;background:${c2}"></i></div></div>`;
+}
+let lastPanel = '';
+function panelHTML() {
+  if (!sel) {
+    const r = S.rating || { ah: 0, gh: 60, cleanF: 1, amen: 0 };
+    return `<h3>Park overview</h3>
+      ${bar('Animal happiness', r.ah)}${bar('Guest satisfaction', r.gh)}${bar('Path cleanliness', r.cleanF * 100)}
+      <div class="kv" style="margin-top:8px"><span>Species</span><span>${speciesCount()}</span><span>Visitors so far</span><span>${S.totalGuests.toLocaleString()}</span><span>Fair ticket price</span><span>about ${fmt(fairPrice())}</span></div>
+      <p class="note" style="margin-top:10px">Tip: select a habitat to feed it, clean it and adopt animals that suit it.</p>`;
+  }
+  if (sel.kind === 'hab') {
+    const h = habById.get(sel.id); if (!h) { sel = null; return panelHTML(); }
+    const list = S.animals.filter(a => a.hab === h.id);
+    const suits = Object.entries(SPECIES).filter(([, s]) => s.biome === h.biome);
+    if (confirmDemo === h.id) return `<h3>Demolish ${h.name}?</h3><p class="note">${list.length ? `${list.length} animal${list.length > 1 ? 's' : ''} will be rehomed for half their price.` : 'The habitat is empty.'} This cannot be undone.</p><div class="actions"><button class="btn danger" data-act="demo-yes">Demolish</button><button class="btn" data-act="demo-no">Keep it</button></div>`;
+    return `<div class="title-row"><span class="swatch" style="background:${BIOMES[h.biome].color};width:30px;height:30px;margin:0"></span><div><h4>${h.name}</h4><p>${h.w}×${h.h} tiles · enrichment ${h.enrich ?? 0}</p></div></div>
+      ${bar('Food', h.food)}${bar('Cleanliness', h.clean)}
+      <div class="meter"><div class="row"><span>Space</span><b>${h.space >= 9 ? 'empty' : h.space >= 1 ? 'roomy' : 'cramped'}</b></div><div class="bar"><i style="width:${clamp((h.space ?? 1) * 60, 4, 100)}%;background:${(h.space ?? 1) >= 1 ? 'var(--good)' : 'var(--bad)'}"></i></div></div>
+      <div class="actions"><button class="btn" data-act="feed">Feed · ${fmt(20 + list.length * 5)}</button><button class="btn" data-act="clean">Clean · $30</button><button class="btn danger" data-act="demo">Demolish</button></div>
+      <div class="alist">${list.map(a => `<button class="arow" data-act="sel-animal" data-id="${a.id}"><span>${SPECIES[a.sp].e}</span><span>${a.name}${a.baby ? ' (baby)' : ''}</span><b style="color:${a.happy > 60 ? 'var(--good)' : a.happy > 30 ? 'var(--warn)' : 'var(--bad)'}">${Math.round(a.happy)}%</b></button>`).join('') || '<p class="note">No animals yet.</p>'}</div>
+      <div class="group-lbl">Adopt here</div>
+      <div class="chips">${suits.map(([k, s]) => `<button class="chip" data-act="adopt" data-sp="${k}" ${starLevel() < s.stars ? 'disabled title="Locked"' : ''} style="cursor:pointer">${s.e} ${fmt(s.cost)}${starLevel() < s.stars ? ` · ${s.stars}★` : ''}</button>`).join('')}</div>`;
+  }
+  if (sel.kind === 'animal') {
+    const a = S.animals.find(q => q.id === sel.id); if (!a) { sel = null; return panelHTML(); }
+    const sp = SPECIES[a.sp], h = habById.get(a.hab);
+    return `<div class="title-row"><span class="big">${sp.e}</span><div><h4>${a.name}</h4><p>${sp.name}${a.baby ? ' · baby' : ''} · ${a.age} day${a.age === 1 ? '' : 's'} at the zoo</p></div></div>
+      ${bar('Happiness', a.happy)}
+      <div class="chips">${a.reasons.map(([t, g]) => `<span class="chip ${g ? 'good' : 'bad'}">${t}</span>`).join('')}</div>
+      <div class="kv"><span>Lives in</span><span>${h ? h.name : '—'}</span><span>Prefers</span><span>${BIOMES[sp.biome].name}, ${sp.space} tiles</span><span>Social</span><span>${sp.social ? 'Herd / group' : 'Solitary'}</span></div>
+      <div class="actions"><button class="btn" data-act="sel-hab" data-id="${a.hab}">View habitat</button><button class="btn danger" data-act="sell">Rehome · +${fmt(sp.cost * .5)}</button></div>`;
+  }
+  if (sel.kind === 'guest') {
+    const g = S.guests.find(q => q.id === sel.id); if (!g) { sel = null; return panelHTML(); }
+    return `<div class="title-row"><span class="big" style="width:28px;height:28px;border-radius:50%;background:hsl(${g.hue} 62% 52%)"></span><div><h4>Guest #${g.id}</h4><p>${fmt(g.money)} left · ${g.state === 'leave' ? 'heading home' : g.state === 'seek' ? 'looking for a ' + ({ hunger: 'snack', thirst: 'drink', energy: 'bench', bladder: 'restroom', shop: 'souvenir' })[g.goal] : 'exploring'}</p></div></div>
+      ${bar('Happiness', g.happy)}${bar('Hunger', g.hunger, 1)}${bar('Thirst', g.thirst, 1)}${bar('Tiredness', g.energy, 1)}${bar('Restroom', g.bladder, 1)}
+      <div class="thought">“${g.thought}”</div>`;
+  }
+  if (sel.kind === 'staff') {
+    const f = S.staff.find(q => q.id === sel.id); if (!f) { sel = null; return panelHTML(); }
+    const s = STAFF[f.type];
+    return `<div class="title-row"><span class="big" style="color:${s.color};font-weight:800">${s.letter}</span><div><h4>${f.name}</h4><p>${s.name} · ${fmt(s.wage)}/day</p></div></div>
+      <p class="note">${f.work > 0 && f.job !== 'idle' ? (f.type === 'keeper' ? 'Feeding and cleaning a habitat.' : 'Sweeping up litter.') : f.job && f.job !== 'idle' ? 'On the way to a job.' : 'Patrolling the paths.'}</p>
+      <div class="actions"><button class="btn danger" data-act="fire-sel">Fire</button></div>`;
+  }
+  if (sel.kind === 'bld') {
+    const b = bldById.get(sel.id); if (!b) { sel = null; return panelHTML(); }
+    const s = SHOPS[b.type];
+    return `<div class="title-row"><span class="big">${s.e}</span><div><h4>${s.name}</h4><p>Upkeep ${fmt(s.upkeep)}/day</p></div></div>
+      <div class="kv"><span>Price</span><span>${s.price ? fmt(s.price) : 'Free'}</span><span>Takings</span><span>${fmt(b.rev)}</span></div>
+      <div class="actions"><button class="btn danger" data-act="sell-bld">Demolish · +${fmt(s.cost * .5)}</button></div>`;
+  }
+  return '';
+}
+function renderPanel(force) {
+  const h = panelHTML();
+  if (force || h !== lastPanel) { $('info').innerHTML = h; lastPanel = h; }
+}
+function onPanelAct(b) {
+  const act = b.dataset.act;
+  const h = sel && sel.kind === 'hab' ? habById.get(sel.id) : null;
+  if (act === 'feed' && h) { const c = 20 + (h.count || 0) * 5; if (canAfford(c)) { spend(c); S.today.feed += c; h.food = 100; toast(`${h.name} fed.`); } }
+  else if (act === 'clean' && h) { if (canAfford(30)) { spend(30); h.clean = 100; toast(`${h.name} cleaned.`); } }
+  else if (act === 'demo' && h) confirmDemo = h.id;
+  else if (act === 'demo-yes' && h) removeHabitat(h);
+  else if (act === 'demo-no') confirmDemo = null;
+  else if (act === 'adopt' && h) adopt(b.dataset.sp, h);
+  else if (act === 'sel-animal') sel = { kind: 'animal', id: +b.dataset.id };
+  else if (act === 'sel-hab') sel = { kind: 'hab', id: +b.dataset.id };
+  else if (act === 'sell') { const a = S.animals.find(q => q.id === sel.id); if (a) { S.money += SPECIES[a.sp].cost * .5; S.animals = S.animals.filter(q => q !== a); toast(`${a.name} was rehomed to a partner zoo.`); sel = { kind: 'hab', id: a.hab }; } }
+  else if (act === 'fire-sel') fire(sel.id);
+  else if (act === 'sell-bld') removeBuilding(bldById.get(sel.id));
+  renderPanel(true);
+}
+// pointerdown so panel refreshes between press and release never swallow a click
+$('info').addEventListener('pointerdown', e => { const b = e.target.closest('[data-act]'); if (b && e.button === 0) { e.preventDefault(); onPanelAct(b); } });
+$('info').addEventListener('click', e => { if (e.detail !== 0) return; const b = e.target.closest('[data-act]'); if (b) onPanelAct(b); });
+
+function renderGoals() {
+  const open = GOALS.filter(g => !S.goals[g.id]).slice(0, 4);
+  const done = GOALS.filter(g => S.goals[g.id]).length;
+  const html = open.map(g => `<li>${g.text}${g.reward ? `<small>+${fmt(g.reward)}</small>` : ''}</li>`).join('') + (open.length ? '' : '<li>Every goal complete. Your park is legendary.</li>') + `<p class="note" style="margin:6px 0 0 -20px">${done} of ${GOALS.length} complete</p>`;
+  if ($('goals').innerHTML !== html) $('goals').innerHTML = html;
+}
+function renderLedger() {
+  const y = S.yesterday;
+  let html;
+  if (!y) html = '<span class="note" style="grid-column:1/-1;margin:0">The first day\'s accounts appear at closing time.</span>';
+  else {
+    const inc = y.admission + y.shops, exp = y.wages + y.upkeep + y.feed;
+    html = `<span>Tickets (${y.visitors})</span><b class="pos">${fmt(y.admission)}</b><span>Shops</span><b class="pos">${fmt(y.shops)}</b><span>Staff wages</span><b class="negc">${fmt(-y.wages)}</b><span>Upkeep</span><b class="negc">${fmt(-y.upkeep)}</b><span>Animal feed</span><b class="negc">${fmt(-y.feed)}</b><span class="tot">Net</span><b class="tot ${inc - exp >= 0 ? 'pos' : 'negc'}">${fmt(inc - exp)}</b>`;
+  }
+  if ($('ledger').innerHTML !== html) $('ledger').innerHTML = html;
+}
+function setText(id, v) { const el = $(id); if (el.textContent !== v) el.textContent = v; }
+let lastStar = -1, lastMoneyBand = null;
+function renderTop() {
+  setText('sMoney', fmt(S.money)); $('sMoney').classList.toggle('neg', S.money < 0);
+  setText('sGuests', String(S.guests.length));
+  setText('sAnimals', String(S.animals.length));
+  const st = clamp(Math.round(S.stars * 2) / 2, 0, 5);
+  let s = ''; for (let k = 1; k <= 5; k++) s += st >= k ? '★' : st >= k - .5 ? '⯪' : '☆';
+  setText('sStars', s); $('sStars').title = `${S.stars.toFixed(2)} stars`;
+  const mins = Math.floor(S.time * 24 * 60), hh = Math.floor(mins / 60), mm = Math.floor(mins % 60 / 10) * 10;
+  setText('sDay', `Day ${S.day}${S.time >= OPEN && S.time < CLOSE ? '' : ' · closed'}`);
+  setText('sClock', `${String(hh).padStart(2, '0')}:${String(mm).padStart(2, '0')}`);
+  setText('sPrice', fmt(S.price));
+  for (const b of $('speed').children) b.setAttribute('aria-pressed', +b.dataset.speed === S.speed);
+  // refresh affordability/unlocks in the palette when they change
+  const band = S.money >= 0 ? Math.floor(Math.log2(Math.max(1, S.money)) * 4) : -1;
+  if (starLevel() !== lastStar || band !== lastMoneyBand) {
+    if (lastStar >= 0 && starLevel() > lastStar) toast(`Your zoo reached ${starLevel()} stars! New species unlocked.`, 'good');
+    lastStar = starLevel(); lastMoneyBand = band; buildTools();
+  }
+}
+function setSpeed(v) { S.speed = v; renderTop(); }
+$('speed').addEventListener('click', e => { const b = e.target.closest('[data-speed]'); if (b) setSpeed(+b.dataset.speed); });
+$('pMinus').onclick = () => { S.price = Math.max(0, S.price - 1); renderTop(); };
+$('pPlus').onclick = () => { S.price = Math.min(99, S.price + 1); renderTop(); };
+
+function toast(msg, kind) {
+  const el = document.createElement('div');
+  el.className = 'toast' + (kind ? ' ' + kind : ''); el.textContent = msg;
+  const box = $('toasts'); box.appendChild(el);
+  while (box.children.length > 4) box.firstChild.remove();
+  setTimeout(() => el.remove(), 4500);
+}
+
+/* ================= save / overlay ================= */
+function serialize() { return JSON.stringify(S); }
+function save(quiet) {
+  try { localStorage.setItem(SAVE_KEY, serialize()); if (!quiet) toast('Game saved in this browser.', 'good'); }
+  catch (e) { if (!quiet) toast('Saving is not available in this browser.', 'bad'); }
+}
+function loadSaved() {
+  try { const raw = localStorage.getItem(SAVE_KEY); if (!raw) return null; const s = JSON.parse(raw); return s && s.v === 1 ? s : null; } catch (e) { return null; }
+}
+function startWith(state) {
+  S = state; rebuildIndex(); sel = null; confirmDemo = null; lastStar = -1;
+  if (!S.speed) S.speed = 1;
+  habStats(); rate();
+  running = true; $('overlay').hidden = true;
+  buildTools(); renderTop(); renderPanel(true); renderGoals(); renderLedger(); updateHint();
+}
+const HOWTO = `<ol>
+  <li><b>Build habitats</b> next to paths. Pick the biome your animals need.</li>
+  <li><b>Adopt animals</b> and add trees, rocks and water holes so they stay happy.</li>
+  <li><b>Hire zookeepers</b> to feed animals and janitors to sweep up litter.</li>
+  <li><b>Open shops</b> so guests can eat, drink and rest. Happy guests raise your star rating and unlock rarer species.</li>
+</ol>`;
+function showTitle() {
+  const has = !!loadSaved();
+  running = false;
+  $('overlay').innerHTML = `<div class="dialog"><h1>Wild Acres</h1><div class="parkline">ZOO &amp; WILDLIFE PARK · EST. DAY 1</div>
+    <p>You are the new director of a small wildlife park with three zebras and a drink stand. Grow it into a five-star zoo.</p>${HOWTO}
+    <div class="actions">${has ? '<button class="btn primary" data-o="continue">Continue your zoo</button>' : ''}<button class="btn ${has ? '' : 'primary'}" data-o="new">Start a new zoo</button></div></div>`;
+  $('overlay').hidden = false;
+}
+function showMenu() {
+  running = false;
+  $('overlay').innerHTML = `<div class="dialog"><h2>Paused</h2>${HOWTO}
+    <div class="actions"><button class="btn primary" data-o="resume">Resume</button><button class="btn" data-o="save">Save</button><button class="btn danger" data-o="ask-new">New zoo</button></div></div>`;
+  $('overlay').hidden = false;
+}
+function gameOver() {
+  running = false;
+  try { localStorage.removeItem(SAVE_KEY); } catch (e) {}
+  $('overlay').innerHTML = `<div class="dialog"><h2>The zoo has closed</h2><p>Debts passed ${fmt(5000)} on day ${S.day}. The animals have gone to good homes. You welcomed ${S.totalGuests.toLocaleString()} visitors along the way.</p><div class="actions"><button class="btn primary" data-o="new">Start a new zoo</button></div></div>`;
+  $('overlay').hidden = false;
+}
+$('overlay').addEventListener('click', e => {
+  const b = e.target.closest('[data-o]'); if (!b) return;
+  const o = b.dataset.o;
+  if (o === 'continue') startWith(loadSaved() || (newGame(), S));
+  else if (o === 'new') { newGame(); startWith(S); toast('Welcome, director. Try building a second habitat.'); }
+  else if (o === 'resume') { running = true; $('overlay').hidden = true; }
+  else if (o === 'save') { save(false); running = true; $('overlay').hidden = true; }
+  else if (o === 'ask-new') {
+    $('overlay').querySelector('.actions').innerHTML = '<span class="note" style="flex-basis:100%">Start over? Your current zoo will be replaced.</span><button class="btn danger" data-o="new">Yes, start over</button><button class="btn" data-o="resume">Cancel</button>';
+  }
+});
+$('menuBtn').onclick = () => { if (running) { save(true); showMenu(); } };
+
+/* ================= main loop ================= */
+let last = performance.now(), acc = 0, perfNow = 0;
+function frame(now) {
+  perfNow = now;
+  const dt = Math.min(0.25, (now - last) / 1000); last = now;
+  if (running && S.speed) {
+    acc += dt * S.speed;
+    let n = 0;
+    while (acc >= STEP && n < 60) { step(STEP); acc -= STEP; n++; }
+    if (n >= 60) acc = 0;
+  }
+  if (S) {
+    render();
+    timers.ui += dt;
+    if (timers.ui > 0.25) { timers.ui = 0; renderTop(); renderPanel(false); renderGoals(); renderLedger(); }
+  }
+  requestAnimationFrame(frame);
+}
+
+function boot(data) {
+  // a live background zoo behind the title screen
+  newGame();
+  let restored = null;
+  if (data && data.save) { try { restored = JSON.parse(data.save); } catch (e) {} }
+  if (restored && restored.v === 1) startWith(restored);
+  else { buildTools(); renderTop(); renderPanel(true); renderGoals(); renderLedger(); updateHint(); showTitle(); }
+  window.claude?.hot?.snapshot?.(() => ({ save: running ? serialize() : null }));
+  requestAnimationFrame(frame);
+}
+window.__wildAcres = { get S() { return S; }, step, newGame: () => { newGame(); startWith(S); } };
+window.claude?.hot?.ready ? window.claude.hot.ready(boot) : boot(window.claude?.hot?.data ?? {});
+})();
+</script>
+
+</body>
+</html>
